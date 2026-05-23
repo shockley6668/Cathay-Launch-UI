@@ -1,0 +1,25 @@
+{
+  "permissions": {
+    "allow": [
+      "WebFetch(domain:skillhub.cn)",
+      "WebFetch(domain:skillhub-1388575217.cos.ap-guangzhou.myqcloud.com)",
+      "Bash(bash *)",
+      "Bash(skillhub search *)",
+      "Read(//Users/shockleykun/.openclaw/workspace/skills/find-skills/**)",
+      "Read(//Users/shockleykun/.skillhub/**)",
+      "Bash(skillhub *)",
+      "Bash(curl -sS \"https://skillhub-1388575217.cos.ap-guangzhou.myqcloud.com/skills.json\")",
+      "Bash(python3 -c ' *)",
+      "Bash(python3 *)",
+      "Bash(curl -fsSL \"https://api.skillhub.cn/api/v1/download?slug=self-improving-agent\" -o /tmp/skill-self-improving-agent.zip)",
+      "Bash(curl -fsSL \"https://api.skillhub.cn/api/v1/download?slug=elite-longterm-memory\" -o /tmp/skill-elite-longterm-memory.zip)",
+      "Bash(curl -fsSL \"https://api.skillhub.cn/api/v1/download?slug=ontology\" -o /tmp/skill-ontology.zip)",
+      "Bash(curl -fsSL \"https://api.skillhub.cn/api/v1/download?slug=obsidian\" -o /tmp/skill-obsidian.zip)",
+      "WebSearch",
+      "WebFetch(domain:www.anthropic.com)",
+      "Bash(git init *)",
+      "Bash(git add *)",
+      "Bash(git commit *)"
+    ]
+  }
+}

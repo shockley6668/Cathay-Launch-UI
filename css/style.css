@@ -1,0 +1,1256 @@
+/* ============================================================
+   Cathay Pacific Split-Flap Departure Board
+   Design System & Animation Engine
+   ============================================================ */
+
+/* --- Design Tokens --- */
+:root {
+  /* Cathay Pacific brand-inspired palette */
+  --cx-jade:        #006564;
+  --cx-jade-light:  #00897B;
+  --cx-jade-glow:   #00ff9d;
+  --cx-gold:        #C4A35A;
+  --cx-gold-dim:    #8a7340;
+
+  /* Board colors */
+  --board-bg:       #0a0a14;
+  --board-surface:  #111120;
+  --flap-bg:        #1e1e2a;
+  --flap-bg-bottom: #191925;
+  --flap-border:    #2a2a3a;
+  --flap-divider:   #0d0d18;
+  --flap-shadow:    rgba(0, 0, 0, 0.5);
+  --text-primary:   #e8ffe8;
+  --text-dim:       #6a7a6a;
+  --text-status-ok: #00e676;
+  --text-status-warn: #ffc107;
+  --text-status-go: #00b0ff;
+
+  /* Sizing — tuned for 240×240 and 320×240 */
+  --flap-width:     22px;
+  --flap-height:    32px;
+  --flap-gap:       2px;
+  --flap-radius:    3px;
+  --flap-font-size: 18px;
+  --label-font-size: 8px;
+  --header-height:  28px;
+  --footer-height:  22px;
+  --row-gap:        6px;
+
+  /* Animation */
+  --flip-duration:  0.25s;
+  --stagger-delay:  0.04s;
+  --flip-ease:      cubic-bezier(0.4, 0.0, 0.2, 1);
+}
+
+/* --- Large screen overrides (PC preview) --- */
+@media (min-width: 500px) {
+  :root {
+    --flap-width:     44px;
+    --flap-height:    64px;
+    --flap-gap:       4px;
+    --flap-radius:    5px;
+    --flap-font-size: 36px;
+    --label-font-size: 11px;
+    --header-height:  52px;
+    --footer-height:  36px;
+    --row-gap:        12px;
+  }
+}
+
+@media (min-width: 800px) {
+  :root {
+    --flap-width:     54px;
+    --flap-height:    78px;
+    --flap-gap:       5px;
+    --flap-radius:    6px;
+    --flap-font-size: 44px;
+    --label-font-size: 13px;
+    --header-height:  60px;
+    --footer-height:  42px;
+    --row-gap:        16px;
+  }
+}
+
+/* --- Reset & Base --- */
+*, *::before, *::after {
+  margin: 0;
+  padding: 0;
+  box-sizing: border-box;
+}
+
+html, body {
+  width: 100%;
+  height: 100%;
+  overflow: hidden;
+  background: var(--board-bg);
+  font-family: 'Roboto Mono', 'Courier New', monospace;
+  -webkit-font-smoothing: antialiased;
+  -moz-osx-font-smoothing: grayscale;
+}
+
+/* --- Split-Flap Scene Container --- */
+.flap-scene {
+  position: absolute;
+  inset: 0;
+  width: 100%;
+  height: 100%;
+  display: flex;
+  flex-direction: column;
+  background: var(--board-bg);
+  background-image:
+    radial-gradient(ellipse at 50% 0%, rgba(0, 101, 100, 0.08) 0%, transparent 60%),
+    radial-gradient(ellipse at 50% 100%, rgba(0, 0, 0, 0.3) 0%, transparent 50%);
+  z-index: 20;
+  opacity: 0;
+  pointer-events: none;
+  transition: opacity 1s ease;
+}
+
+.flap-scene.active,
+.flap-scene.visible-scene {
+  opacity: 1;
+  pointer-events: auto;
+}
+
+/* Subtle scan-line overlay for CRT feel */
+.flap-scene::after {
+  content: '';
+  position: absolute;
+  inset: 0;
+  background: repeating-linear-gradient(
+    0deg,
+    transparent,
+    transparent 2px,
+    rgba(0, 0, 0, 0.03) 2px,
+    rgba(0, 0, 0, 0.03) 4px
+  );
+  pointer-events: none;
+  z-index: 100;
+}
+
+/* --- Header --- */
+.flap-header {
+  height: var(--header-height);
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 0 8px;
+  border-bottom: 1px solid rgba(0, 101, 100, 0.2);
+  flex-shrink: 0;
+}
+
+@media (min-width: 500px) {
+  .flap-header {
+    padding: 0 20px;
+  }
+}
+
+.flap-header-logo {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  color: var(--cx-jade-light);
+}
+
+.flap-logo-svg {
+  width: auto;
+  height: 20px;
+  filter: brightness(0) invert(1);
+}
+
+@media (min-width: 500px) {
+  .flap-logo-svg {
+    width: auto;
+    height: 36px;
+  }
+  .flap-header-logo {
+    gap: 8px;
+  }
+}
+
+.flap-brand {
+  display: none;
+}
+
+@media (min-width: 500px) {
+  .flap-brand {
+    font-size: 13px;
+    letter-spacing: 3px;
+  }
+}
+
+@media (min-width: 800px) {
+  .flap-brand {
+    font-size: 15px;
+    letter-spacing: 4px;
+  }
+}
+
+.flap-departures-badge {
+  display: flex;
+  align-items: center;
+  gap: 5px;
+}
+
+.dep-dot {
+  width: 6px;
+  height: 6px;
+  border-radius: 50%;
+  background: var(--text-status-ok);
+  box-shadow: 0 0 6px var(--text-status-ok), 0 0 12px rgba(0, 230, 118, 0.3);
+  animation: pulse-dot 2s ease-in-out infinite;
+}
+
+@media (min-width: 500px) {
+  .dep-dot {
+    width: 8px;
+    height: 8px;
+  }
+}
+
+@keyframes pulse-dot {
+  0%, 100% { opacity: 1; transform: scale(1); }
+  50% { opacity: 0.5; transform: scale(0.85); }
+}
+
+.dep-text {
+  font-family: 'Inter', sans-serif;
+  font-size: 7px;
+  font-weight: 700;
+  letter-spacing: 2px;
+  color: var(--cx-jade-light);
+}
+
+@media (min-width: 500px) {
+  .dep-text {
+    font-size: 11px;
+    letter-spacing: 3px;
+  }
+}
+
+@media (min-width: 800px) {
+  .dep-text {
+    font-size: 13px;
+  }
+}
+
+/* --- Board Main --- */
+.flap-board {
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+  justify-content: center;
+  align-items: center;
+  gap: var(--row-gap);
+  padding: 8px 8px;
+  min-height: 0;
+}
+
+@media (min-width: 500px) {
+  .flap-board {
+    padding: 16px 20px;
+  }
+}
+
+/* --- Section (Label + Row) --- */
+.flap-section {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 4px;
+  width: 100%;
+}
+
+.flap-section--hero {
+  margin: 4px 0;
+}
+
+@media (min-width: 500px) {
+  .flap-section--hero {
+    margin: 10px 0;
+  }
+}
+
+/* --- Labels --- */
+.flap-label {
+  font-family: 'Inter', sans-serif;
+  font-size: var(--label-font-size);
+  font-weight: 600;
+  letter-spacing: 1.5px;
+  color: var(--cx-gold-dim);
+  text-transform: uppercase;
+  margin-bottom: 2px;
+  user-select: none;
+}
+
+.flap-label--hero {
+  color: var(--cx-gold);
+  font-size: calc(var(--label-font-size) * 1.25);
+  text-shadow: 0 0 8px rgba(196, 163, 90, 0.25);
+}
+
+/* --- Board Row --- */
+.flap-row {
+  display: flex;
+  align-items: center;
+  gap: var(--flap-gap);
+  width: 100%;
+  justify-content: center;
+}
+
+/* --- Individual Flap Character --- */
+.flap-char {
+  position: relative;
+  width: var(--flap-width);
+  height: var(--flap-height);
+  perspective: 300px;
+  /* Small glow underneath */
+  filter: drop-shadow(0 1px 2px rgba(0, 255, 157, 0.03));
+}
+
+/* --- Flap halves (static background) --- */
+.flap-top,
+.flap-bottom {
+  position: absolute;
+  left: 0;
+  width: 100%;
+  height: 50%;
+  overflow: hidden;
+  background: var(--flap-bg);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+
+.flap-top {
+  top: 0;
+  border-radius: var(--flap-radius) var(--flap-radius) 0 0;
+  align-items: flex-end;
+  border-bottom: 1px solid var(--flap-divider);
+  /* Subtle top highlight */
+  background: linear-gradient(180deg, #242438 0%, var(--flap-bg) 100%);
+}
+
+.flap-bottom {
+  bottom: 0;
+  border-radius: 0 0 var(--flap-radius) var(--flap-radius);
+  align-items: flex-start;
+  background: linear-gradient(180deg, var(--flap-bg-bottom) 0%, #141422 100%);
+  /* Subtle bottom shadow */
+  box-shadow: 0 2px 4px var(--flap-shadow);
+}
+
+/* --- Flap text (clipped to half) --- */
+.flap-text {
+  font-family: 'Roboto Mono', monospace;
+  font-size: var(--flap-font-size);
+  font-weight: 700;
+  color: var(--text-primary);
+  line-height: var(--flap-height);
+  height: var(--flap-height);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  text-shadow: 0 0 8px rgba(0, 255, 157, 0.15);
+  user-select: none;
+}
+
+/* --- Animated flipping parts --- */
+.flap-flip-top,
+.flap-flip-bottom {
+  position: absolute;
+  left: 0;
+  width: 100%;
+  height: 50%;
+  overflow: hidden;
+  transform-style: preserve-3d;
+  backface-visibility: hidden;
+  z-index: 10;
+}
+
+.flap-flip-top {
+  top: 0;
+  transform-origin: bottom center;
+  border-radius: var(--flap-radius) var(--flap-radius) 0 0;
+  background: linear-gradient(180deg, #242438 0%, var(--flap-bg) 100%);
+  border-bottom: 1px solid var(--flap-divider);
+}
+
+.flap-flip-bottom {
+  bottom: 0;
+  transform-origin: top center;
+  border-radius: 0 0 var(--flap-radius) var(--flap-radius);
+  background: linear-gradient(180deg, var(--flap-bg-bottom) 0%, #141422 100%);
+  transform: rotateX(90deg);
+}
+
+/* Flip text styling (same as static) */
+.flap-flip-top .flap-text {
+  position: absolute;
+  bottom: 0;
+  width: 100%;
+}
+
+.flap-flip-bottom .flap-text {
+  position: absolute;
+  top: 0;
+  width: 100%;
+}
+
+/* --- Flip Animation Keyframes --- */
+@keyframes flipTop {
+  0% {
+    transform: rotateX(0deg);
+  }
+  100% {
+    transform: rotateX(-90deg);
+  }
+}
+
+@keyframes flipBottom {
+  0% {
+    transform: rotateX(90deg);
+  }
+  100% {
+    transform: rotateX(0deg);
+  }
+}
+
+.flap-flip-top.flipping {
+  animation: flipTop var(--flip-duration) var(--flip-ease) forwards;
+}
+
+.flap-flip-bottom.flipping {
+  animation: flipBottom var(--flip-duration) var(--flip-ease) forwards;
+  animation-delay: calc(var(--flip-duration) * 0.45);
+}
+
+/* --- Flap Divider line (the signature look) --- */
+.flap-char::after {
+  content: '';
+  position: absolute;
+  left: 0;
+  top: calc(50% - 0.5px);
+  width: 100%;
+  height: 1px;
+  background: var(--flap-divider);
+  z-index: 20;
+  pointer-events: none;
+}
+
+/* --- Row-specific color overrides --- */
+#flap-row-flight .flap-text {
+  color: #b8d4e3;
+  text-shadow: 0 0 6px rgba(120, 180, 220, 0.1);
+}
+
+#flap-row-to .flap-text {
+  color: var(--cx-jade-glow);
+  text-shadow: 0 0 10px rgba(0, 255, 157, 0.2), 0 0 20px rgba(0, 255, 157, 0.05);
+}
+
+#flap-row-status .flap-text {
+  color: var(--text-status-ok);
+  text-shadow: 0 0 6px rgba(0, 230, 118, 0.15);
+}
+
+/* Status color variants */
+#flap-row-status .flap-text[data-status-color="warn"] {
+  color: var(--text-status-warn);
+  text-shadow: 0 0 6px rgba(255, 193, 7, 0.15);
+}
+
+#flap-row-status .flap-text[data-status-color="info"] {
+  color: var(--text-status-go);
+  text-shadow: 0 0 6px rgba(0, 176, 255, 0.15);
+}
+
+/* --- Footer --- */
+.flap-footer {
+  height: var(--footer-height);
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 0 8px;
+  border-top: 1px solid rgba(0, 101, 100, 0.15);
+  flex-shrink: 0;
+}
+
+@media (min-width: 500px) {
+  .flap-footer {
+    padding: 0 20px;
+  }
+}
+
+.flap-touch-hint {
+  font-family: 'Inter', sans-serif;
+  font-size: 8px;
+  font-weight: 600;
+  letter-spacing: 1px;
+  color: var(--cx-gold-dim);
+  animation: pulse-hint 1.8s ease-in-out infinite;
+  cursor: pointer;
+  user-select: none;
+}
+
+@keyframes pulse-hint {
+  0%, 100% { opacity: 0.5; color: var(--cx-gold-dim); }
+  50% { opacity: 1; color: var(--cx-gold); }
+}
+
+@media (min-width: 500px) {
+  .flap-touch-hint {
+    font-size: 11px;
+    letter-spacing: 1.5px;
+  }
+}
+
+@media (min-width: 800px) {
+  .flap-touch-hint {
+    font-size: 13px;
+    letter-spacing: 2px;
+  }
+}
+
+.flap-time {
+  font-family: 'Roboto Mono', monospace;
+  font-size: 10px;
+  font-weight: 700;
+  color: var(--text-primary);
+  letter-spacing: 1px;
+}
+
+@media (min-width: 500px) {
+  .flap-time {
+    font-size: 15px;
+  }
+}
+
+@media (min-width: 800px) {
+  .flap-time {
+    font-size: 17px;
+  }
+}
+
+/* --- Entry animation for entire scene --- */
+@keyframes boardFadeIn {
+  from {
+    opacity: 0;
+    transform: translateY(8px);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}
+
+.flap-scene.active {
+  animation: boardFadeIn 0.8s ease-out forwards;
+}
+
+/* --- Glow pulse for destination row --- */
+@keyframes glowPulse {
+  0%, 100% {
+    filter: drop-shadow(0 0 4px rgba(0, 255, 157, 0.05));
+  }
+  50% {
+    filter: drop-shadow(0 0 8px rgba(0, 255, 157, 0.12));
+  }
+}
+
+.flap-row--hero {
+  animation: glowPulse 4s ease-in-out infinite;
+}
+
+/* --- Responsive: Very small screens (240px) --- */
+@media (max-width: 260px) {
+  :root {
+    --flap-width:     16px;
+    --flap-height:    24px;
+    --flap-font-size: 13px;
+    --flap-gap:       1px;
+    --flap-radius:    2px;
+    --label-font-size: 6px;
+    --header-height:  22px;
+    --footer-height:  18px;
+    --row-gap:        4px;
+  }
+
+  .flap-brand {
+    font-size: 6px;
+    letter-spacing: 1px;
+  }
+
+  .dep-text {
+    font-size: 6px;
+    letter-spacing: 1px;
+  }
+
+  .flap-logo-svg {
+    width: 12px;
+    height: 12px;
+  }
+
+  .flap-header {
+    padding: 0 4px;
+  }
+
+  .flap-board {
+    padding: 4px 4px;
+  }
+
+  .flap-footer {
+    padding: 0 4px;
+  }
+
+  .flap-touch-hint {
+    font-size: 6px;
+  }
+
+  .flap-time {
+    font-size: 8px;
+  }
+}
+
+/* ============================================================
+   Orchestrator Integration Styles — Start Screen, Globe HUD, Transitions
+   ============================================================ */
+
+/* --- Visibility & Transitions --- */
+.fade-transition {
+  transition: opacity 1.2s cubic-bezier(0.25, 1, 0.5, 1), transform 1.2s cubic-bezier(0.25, 1, 0.5, 1);
+}
+
+.hidden-scene {
+  opacity: 0 !important;
+  pointer-events: none !important;
+  transition: opacity 0.8s ease !important;
+}
+
+.visible-scene {
+  opacity: 1 !important;
+  pointer-events: auto !important;
+  transition: opacity 0.8s ease !important;
+}
+
+/* --- Sweep Transition --- */
+.sweep-transition {
+  position: absolute;
+  top: 0;
+  left: 0;
+  width: 100%;
+  height: 100%;
+  background-color: var(--cx-jade);
+  z-index: 1000;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  pointer-events: none;
+  transform: translateY(100%);
+  transition: transform 1.2s cubic-bezier(0.77, 0, 0.175, 1);
+}
+
+.sweep-brushwing {
+  width: 280px;
+  height: auto;
+  filter: brightness(0) invert(1);
+  opacity: 0.95;
+  transform: scale(0.8) translateY(20px);
+  transition: transform 1.5s cubic-bezier(0.215, 0.61, 0.355, 1), opacity 1.5s ease;
+}
+
+.sweep-active .sweep-brushwing {
+  animation: sweep 2.5s cubic-bezier(0.4, 0, 0.2, 1) forwards;
+}
+
+@keyframes sweep {
+  0% {
+    opacity: 0;
+    transform: translateX(-100vw) scale(1);
+  }
+  20% {
+    opacity: 1;
+    transform: translateX(-20vw) scale(3);
+  }
+  50% {
+    opacity: 1;
+    transform: translateX(0vw) scale(35);
+  }
+  80% {
+    opacity: 1;
+    transform: translateX(20vw) scale(50);
+  }
+  100% {
+    opacity: 0;
+    transform: translateX(100vw) scale(60);
+  }
+}
+
+
+/* --- Starfield --- */
+.starfield {
+  position: absolute;
+  top: 0;
+  left: 0;
+  width: 100%;
+  height: 100%;
+  z-index: 1;
+  pointer-events: none;
+  background: radial-gradient(circle at center, #070913 0%, #020307 100%);
+  transition: opacity 1.5s ease;
+}
+
+/* --- Globe Container --- */
+.globe-container {
+  position: absolute;
+  top: 0;
+  left: 0;
+  width: 100%;
+  height: 100%;
+  z-index: 2;
+  transition: opacity 1.5s ease, transform 1.5s ease;
+}
+
+/* --- Start Screen --- */
+.start-screen {
+  position: absolute;
+  top: 0;
+  left: 0;
+  width: 100%;
+  height: 100%;
+  background-color: #05070f;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  z-index: 100;
+  transition: opacity 1.2s ease, visibility 1.2s ease;
+}
+
+.start-content {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 24px;
+  position: relative;
+}
+
+.start-logo {
+  width: 220px;
+  height: auto;
+  filter: brightness(0) invert(1) drop-shadow(0 0 15px rgba(255, 255, 255, 0.3));
+  animation: logo-pulse 4s ease-in-out infinite;
+}
+
+.start-text {
+  font-family: 'Noto Sans TC', 'PingFang TC', 'Inter', sans-serif;
+  font-size: clamp(10px, 2vw, 13px);
+  font-weight: 300;
+  letter-spacing: 4px;
+  color: rgba(255, 255, 255, 0.8);
+  animation: text-pulse 2s ease-in-out infinite;
+  text-shadow: 0 0 10px rgba(255, 255, 255, 0.4);
+}
+
+.start-pulse-ring {
+  position: absolute;
+  width: 100px;
+  height: 100px;
+  border: 1px solid rgba(255, 255, 255, 0.1);
+  border-radius: 50%;
+  animation: pulse-ring 3s cubic-bezier(0.215, 0.61, 0.355, 1) infinite;
+  pointer-events: none;
+}
+
+@keyframes logo-pulse {
+  0%, 100% {
+    transform: scale(1);
+    opacity: 0.9;
+  }
+  50% {
+    transform: scale(1.03);
+    opacity: 1;
+    filter: drop-shadow(0 0 25px rgba(255, 255, 255, 0.5));
+  }
+}
+
+@keyframes text-pulse {
+  0%, 100% {
+    opacity: 0.5;
+  }
+  50% {
+    opacity: 1;
+  }
+}
+
+@keyframes pulse-ring {
+  0% {
+    transform: scale(0.6);
+    opacity: 0;
+  }
+  50% {
+    opacity: 0.5;
+  }
+  100% {
+    transform: scale(1.8);
+    opacity: 0;
+  }
+}
+
+/* ============================================================
+   Globe HUD Overlay
+   Matches video: earth occupies lower portion, text floats in black space above
+   ============================================================ */
+.globe-hud {
+  position: absolute;
+  inset: 0;
+  z-index: 15;
+  pointer-events: none;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 0;
+  opacity: 0;
+  transition: opacity 1.2s ease;
+}
+
+.globe-hud--visible {
+  opacity: 1;
+}
+
+/* Brushwing logo – small, centered top-area */
+.globe-hud-logo {
+  flex: 0 0 auto;
+  margin-top: 15px;
+  display: flex;
+  justify-content: center;
+  opacity: 0;
+  transform: translateY(-10px);
+  transition: opacity 1s ease 0.5s, transform 1s ease 0.5s;
+}
+
+.globe-brushwing-svg {
+  width: 180px;
+  height: auto;
+  filter: brightness(0) invert(1) drop-shadow(0 0 10px rgba(255,255,255,0.2));
+  animation: hud-logo-float 5s ease-in-out infinite;
+}
+
+@keyframes hud-logo-float {
+  0%, 100% { transform: translateY(0);   opacity: 0.85; }
+  50%       { transform: translateY(-4px); opacity: 1;    }
+}
+
+/* "Enjoy your flight to" label */
+.globe-hud-center {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 10px;
+}
+
+.globe-enjoy-label {
+  font-family: 'Noto Sans TC', 'PingFang TC', 'Inter', sans-serif;
+  font-size: clamp(12px, 2vw, 20px);
+  font-weight: 200;
+  letter-spacing: 5px;
+  color: rgba(255,255,255,0.72);
+  text-transform: none;
+  opacity: 0;
+  transform: translateY(6px);
+  animation: none;
+  transition: opacity 0.8s ease 0.2s, transform 0.8s ease 0.2s;
+}
+
+.globe-hud--visible .globe-enjoy-label {
+  opacity: 1;
+  transform: translateY(0);
+}
+
+/* Container for large split-flap destination letters */
+.globe-dest-flap-row {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 3px;
+  perspective: 900px;
+}
+
+/* ── Large Globe Split-Flap Character ───────────────────────── */
+.globe-flap-char {
+  position: relative;
+  width: clamp(34px, 6vw, 72px);
+  height: clamp(50px, 9vw, 106px);
+  perspective: 600px;
+  filter: drop-shadow(0 2px 6px rgba(0,0,0,0.5));
+}
+
+/* Static halves */
+.gf-top,
+.gf-bottom {
+  position: absolute;
+  left: 0;
+  width: 100%;
+  height: 50%;
+  overflow: hidden;
+  background: rgba(12,12,22,0.88);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  backdrop-filter: blur(4px);
+}
+
+.gf-top {
+  top: 0;
+  border-radius: 4px 4px 0 0;
+  align-items: flex-end;
+  border-bottom: 1px solid rgba(0,0,0,0.6);
+  background: linear-gradient(180deg, rgba(28,28,44,0.92) 0%, rgba(18,18,30,0.9) 100%);
+}
+
+.gf-bottom {
+  bottom: 0;
+  border-radius: 0 0 4px 4px;
+  align-items: flex-start;
+  background: linear-gradient(180deg, rgba(14,14,24,0.9) 0%, rgba(8,8,16,0.92) 100%);
+  box-shadow: 0 3px 8px rgba(0,0,0,0.6);
+}
+
+/* Flap text */
+.gf-text {
+  font-family: 'Noto Sans TC', 'PingFang TC', 'Microsoft JhengHei', 'Inter', sans-serif;
+  font-size: clamp(26px, 4.5vw, 58px);
+  font-weight: 300;
+  color: #ffffff;
+  line-height: 1;
+  height: clamp(50px, 9vw, 106px);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  letter-spacing: 1px;
+  text-shadow: 0 0 20px rgba(255,255,255,0.4);
+  user-select: none;
+}
+
+/* Chinese character variant — slightly wider cells */
+.globe-flap-char--zh {
+  width: clamp(44px, 7.5vw, 90px);
+  height: clamp(50px, 9vw, 106px);
+}
+
+/* Flip panels */
+.gf-flip-top,
+.gf-flip-bottom {
+  position: absolute;
+  left: 0;
+  width: 100%;
+  height: 50%;
+  overflow: hidden;
+  transform-style: preserve-3d;
+  backface-visibility: hidden;
+  z-index: 10;
+}
+
+.gf-flip-top {
+  top: 0;
+  transform-origin: bottom center;
+  border-radius: 4px 4px 0 0;
+  background: linear-gradient(180deg, rgba(28,28,44,0.92) 0%, rgba(18,18,30,0.9) 100%);
+  border-bottom: 1px solid rgba(0,0,0,0.6);
+}
+
+.gf-flip-bottom {
+  bottom: 0;
+  transform-origin: top center;
+  border-radius: 0 0 4px 4px;
+  background: linear-gradient(180deg, rgba(14,14,24,0.9) 0%, rgba(8,8,16,0.92) 100%);
+  transform: rotateX(90deg);
+}
+
+.gf-flip-top .gf-text {
+  position: absolute;
+  bottom: 0;
+  width: 100%;
+}
+
+.gf-flip-bottom .gf-text {
+  position: absolute;
+  top: 0;
+  width: 100%;
+}
+
+/* Centre divider line */
+.globe-flap-char::after {
+  content: '';
+  position: absolute;
+  left: 0;
+  top: calc(50% - 0.5px);
+  width: 100%;
+  height: 1px;
+  background: rgba(0,0,0,0.7);
+  z-index: 20;
+  pointer-events: none;
+}
+
+/* Flip keyframes */
+@keyframes gfFlipTop {
+  0%   { transform: rotateX(0deg);  }
+  100% { transform: rotateX(-90deg); }
+}
+
+@keyframes gfFlipBot {
+  0%   { transform: rotateX(90deg); }
+  100% { transform: rotateX(0deg);  }
+}
+
+.gf-flip-top.gf-flipping-top {
+  animation: gfFlipTop 0.18s cubic-bezier(0.4,0,0.2,1) forwards;
+}
+
+.gf-flip-bottom.gf-flipping-bot {
+  animation: gfFlipBot 0.18s cubic-bezier(0.4,0,0.2,1) forwards;
+  animation-delay: 0.08s;
+}
+
+/* --- Split Flap Board Overrides --- */
+/* Note: .flap-scene base styles are defined above; only overrides here */
+.flap-scene {
+  overflow: hidden;
+}
+
+/* Map existing styles from style.css to flap-scene */
+.flap-header {
+  height: var(--header-height);
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 0 8px;
+  border-bottom: 1px solid rgba(0, 101, 100, 0.2);
+  flex-shrink: 0;
+}
+
+.flap-header-logo {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  color: var(--cx-jade-light);
+}
+
+.flap-logo-svg {
+  width: 16px;
+  height: 16px;
+  opacity: 0.9;
+}
+
+.flap-brand {
+  font-family: 'Inter', sans-serif;
+  font-size: 8px;
+  font-weight: 600;
+  letter-spacing: 2px;
+  color: var(--cx-jade-light);
+  text-transform: uppercase;
+}
+
+.flap-departures-badge {
+  display: flex;
+  align-items: center;
+  gap: 5px;
+}
+
+.dep-dot {
+  width: 6px;
+  height: 6px;
+  border-radius: 50%;
+  background: var(--text-status-ok);
+  box-shadow: 0 0 6px var(--text-status-ok), 0 0 12px rgba(0, 230, 118, 0.3);
+  animation: pulse-dot 2s ease-in-out infinite;
+}
+
+.dep-text {
+  font-family: 'Inter', sans-serif;
+  font-size: 7px;
+  font-weight: 700;
+  letter-spacing: 2px;
+  color: var(--cx-jade-light);
+}
+
+.flap-board {
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+  justify-content: center;
+  align-items: center;
+  gap: var(--row-gap);
+  padding: 8px;
+  min-height: 0;
+  width: 100%;
+  box-sizing: border-box;
+}
+
+.flap-section {
+  display: flex;
+  flex-direction: column;
+  width: 100%;
+  max-width: 480px;
+  gap: 2px;
+}
+
+.flap-label {
+  font-family: 'Inter', sans-serif;
+  font-size: var(--label-font-size);
+  font-weight: 600;
+  letter-spacing: 1.5px;
+  color: var(--cx-gold-dim);
+  text-transform: uppercase;
+  margin-left: 2px;
+}
+
+.flap-row {
+  display: flex;
+  align-items: center;
+  gap: var(--flap-gap);
+  width: 100%;
+}
+
+.flap-footer {
+  height: var(--footer-height);
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 0 8px;
+  border-top: 1px solid rgba(0, 101, 100, 0.15);
+  flex-shrink: 0;
+  user-select: none;
+}
+
+.flap-touch-hint {
+  font-family: 'Inter', sans-serif;
+  font-size: 8px;
+  font-weight: 600;
+  color: var(--cx-jade-glow);
+  letter-spacing: 1px;
+  cursor: pointer;
+  animation: text-pulse 2.5s ease-in-out infinite;
+  text-shadow: 0 0 6px rgba(0, 255, 157, 0.3);
+}
+
+.flap-time {
+  font-family: 'Roboto Mono', monospace;
+  font-size: 10px;
+  font-weight: 700;
+  color: var(--text-primary);
+  letter-spacing: 1px;
+}
+
+/* Custom row color bindings to existing CSS rules */
+#flap-row-flight .flap-char .flap-text {
+  color: #b8d4e3;
+  text-shadow: 0 0 6px rgba(120, 180, 220, 0.15);
+}
+
+#flap-row-to .flap-char .flap-text {
+  color: var(--cx-jade-glow);
+  text-shadow: 0 0 10px rgba(0, 255, 157, 0.25), 0 0 20px rgba(0, 255, 157, 0.1);
+}
+
+#flap-row-status .flap-char .flap-text {
+  color: var(--text-status-ok);
+  text-shadow: 0 0 6px rgba(0, 230, 118, 0.2);
+}
+
+/* Map media queries for premium sizing on mobile (320x480) */
+@media (max-width: 480px) {
+  :root {
+    --flap-width:     12px;
+    --flap-height:    18px;
+    --flap-gap:       1.5px;
+    --flap-radius:    2px;
+    --flap-font-size: 11px;
+    --label-font-size: 6px;
+    --header-height:  28px;
+    --footer-height:  22px;
+    --row-gap:        6px;
+  }
+  
+  .flap-brand {
+    font-size: 7px;
+    letter-spacing: 1px;
+  }
+  
+  .dep-text {
+    font-size: 6px;
+    letter-spacing: 1px;
+  }
+
+  .flap-section--hero .flap-label--hero {
+    font-size: 7px;
+  }
+  
+  .flap-board {
+    padding: 6px 12px;
+  }
+  
+  .flap-row {
+    justify-content: flex-start;
+  }
+  
+  .flap-char--space {
+    width: calc(var(--flap-width) * 0.35);
+  }
+  
+  /* Make sure destination hero rows wrap beautifully or fit */
+  .flap-section--hero {
+    margin: 2px 0;
+  }
+}
+
+/* Landscape or PC preview overrides for split-flap header */
+@media (min-width: 500px) {
+  .flap-logo-svg {
+    width: 28px;
+    height: 28px;
+  }
+  .flap-header-logo {
+    gap: 8px;
+  }
+  .flap-brand {
+    font-size: 13px;
+    letter-spacing: 3px;
+  }
+  .dep-text {
+    font-size: 11px;
+    letter-spacing: 3px;
+  }
+  .dep-dot {
+    width: 8px;
+    height: 8px;
+  }
+  .flap-touch-hint {
+    font-size: 11px;
+    letter-spacing: 2px;
+  }
+  .flap-time {
+    font-size: 15px;
+  }
+  .flap-header {
+    padding: 0 20px;
+  }
+  .flap-footer {
+    padding: 0 20px;
+  }
+}
+
+@media (min-width: 800px) {
+  .flap-brand {
+    font-size: 15px;
+    letter-spacing: 4px;
+  }
+  .dep-text {
+    font-size: 13px;
+  }
+  .flap-time {
+    font-size: 17px;
+  }
+}
+
