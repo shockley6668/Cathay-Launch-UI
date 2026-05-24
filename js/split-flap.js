@@ -22,98 +22,25 @@
   const ROW_STAGGER_DELAY = 120;
   const COL_STAGGER_DELAY = 40;
 
-  // Web Audio Context for mechanical clicks
-  let audioCtx = null;
-  let lastClickTime = 0;
-  const CLICK_THROTTLE_MS = 12; // Min time between click sounds to avoid clipping/noise
-
-  // Initialize or resume the audio context
-  function initAudio() {
-    if (!audioCtx) {
-      audioCtx = new (window.AudioContext || window.webkitAudioContext)();
-    }
-    if (audioCtx.state === 'suspended') {
-      audioCtx.resume();
-    }
-  }
-
-  // Synthesize a mechanical click/flap sound using white noise and an oscillator sweep
-  function playClickSound() {
-    try {
-      initAudio();
-      const now = audioCtx.currentTime;
-
-      // Throttle density of clicks
-      const nowMs = Date.now();
-      if (nowMs - lastClickTime < CLICK_THROTTLE_MS) {
-        return;
-      }
-      lastClickTime = nowMs;
-
-      // 1. Noise Burst (High-pass filtered click texture)
-      const durationNoise = 0.012; // 12ms burst
-      const bufferSize = audioCtx.sampleRate * durationNoise;
-      const buffer = audioCtx.createBuffer(1, bufferSize, audioCtx.sampleRate);
-      const data = buffer.getChannelData(0);
-      for (let i = 0; i < bufferSize; i++) {
-        data[i] = Math.random() * 2 - 1;
-      }
-
-      const noise = audioCtx.createBufferSource();
-      noise.buffer = buffer;
-
-      const filter = audioCtx.createBiquadFilter();
-      filter.type = 'highpass';
-      filter.frequency.setValueAtTime(1500, now);
-      filter.Q.setValueAtTime(1.5, now);
-
-      const noiseGain = audioCtx.createGain();
-      noiseGain.gain.setValueAtTime(0.04, now);
-      noiseGain.gain.exponentialRampToValueAtTime(0.001, now + durationNoise);
-
-      noise.connect(filter);
-      filter.connect(noiseGain);
-      noiseGain.connect(audioCtx.destination);
-
-      // 2. Resonant Pop (Resonant triangle wave with fast pitch drop)
-      const osc = audioCtx.createOscillator();
-      const oscGain = audioCtx.createGain();
-
-      osc.type = 'triangle';
-      osc.frequency.setValueAtTime(750, now);
-      osc.frequency.exponentialRampToValueAtTime(80, now + 0.008); // pitch drop
-
-      oscGain.gain.setValueAtTime(0.08, now);
-      oscGain.gain.exponentialRampToValueAtTime(0.001, now + 0.01);
-
-      osc.connect(oscGain);
-      oscGain.connect(audioCtx.destination);
-
-      // Start & Stop
-      noise.start(now);
-      osc.start(now);
-      noise.stop(now + 0.02);
-      osc.stop(now + 0.02);
-    } catch (e) {
-      // Audio blocked or unsupported
-    }
-  }
-
   // Help unlock audio context on initial interactions
-  window.addEventListener('click', initAudio);
-  window.addEventListener('touchstart', initAudio);
+  window.addEventListener('click', () => {});
+  window.addEventListener('touchstart', () => {});
 
   // Helper to determine flip duration from CSS variables dynamically
+  let cachedFlipDurationMs = null;
   function getFlipDurationMs() {
+    if (cachedFlipDurationMs !== null) return cachedFlipDurationMs;
     const root = document.documentElement;
     const style = getComputedStyle(root);
     const durationStr = style.getPropertyValue('--flip-duration').trim();
     if (durationStr.endsWith('ms')) {
-      return parseFloat(durationStr);
+      cachedFlipDurationMs = parseFloat(durationStr);
     } else if (durationStr.endsWith('s')) {
-      return parseFloat(durationStr) * 1000;
+      cachedFlipDurationMs = parseFloat(durationStr) * 1000;
+    } else {
+      cachedFlipDurationMs = 250; // default fallback
     }
-    return 100; // default fallback (100ms matches the updated style.css)
+    return cachedFlipDurationMs;
   }
 
   // Get sequence of characters from current to target
@@ -245,12 +172,13 @@
       // Trigger 3D css animation
       this.flipTop.classList.remove('flipping');
       this.flipBottom.classList.remove('flipping');
-      void this.el.offsetWidth; // force redraw/reflow
+      
+      // Force reflow to ensure the browser registers the class removal before re-adding it.
+      // This is necessary for CSS animations to restart reliably without breaking sync with setTimeout.
+      void this.el.offsetWidth;
+
       this.flipTop.classList.add('flipping');
       this.flipBottom.classList.add('flipping');
-
-      // Synthesize click sound
-      playClickSound();
 
       const duration = getFlipDurationMs();
 

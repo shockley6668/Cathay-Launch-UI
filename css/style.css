@@ -652,7 +652,7 @@ html, body {
 }
 
 .sweep-brushwing {
-  width: 280px;
+  width: 120px;
   height: auto;
   filter: brightness(0) invert(1);
   opacity: 0.95;
@@ -712,6 +712,19 @@ html, body {
   transition: opacity 1.5s ease, transform 1.5s ease;
 }
 
+/* --- Globe City Labels (HTML overlay for CJK support) --- */
+.globe-city-label {
+  font-family: 'Noto Sans TC', 'PingFang TC', 'Microsoft JhengHei', 'Inter', sans-serif;
+  font-size: 11px;
+  font-weight: 400;
+  color: rgba(255, 255, 255, 0.85);
+  text-shadow: 0 0 6px rgba(0, 0, 0, 0.8), 0 1px 3px rgba(0, 0, 0, 0.6);
+  white-space: nowrap;
+  pointer-events: none;
+  transform: translate(-50%, -100%);
+  padding-bottom: 4px;
+}
+
 /* --- Start Screen --- */
 .start-screen {
   position: absolute;
@@ -736,7 +749,7 @@ html, body {
 }
 
 .start-logo {
-  width: 220px;
+  width: 100px;
   height: auto;
   filter: brightness(0) invert(1) drop-shadow(0 0 15px rgba(255, 255, 255, 0.3));
   animation: logo-pulse 4s ease-in-out infinite;
@@ -831,7 +844,7 @@ html, body {
 }
 
 .globe-brushwing-svg {
-  width: 180px;
+  width: 80px;
   height: auto;
   filter: brightness(0) invert(1) drop-shadow(0 0 10px rgba(255,255,255,0.2));
   animation: hud-logo-float 5s ease-in-out infinite;
@@ -868,149 +881,33 @@ html, body {
   transform: translateY(0);
 }
 
-/* Container for large split-flap destination letters */
-.globe-dest-flap-row {
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  gap: 3px;
-  perspective: 900px;
-}
-
-/* ── Large Globe Split-Flap Character ───────────────────────── */
-.globe-flap-char {
-  position: relative;
-  width: clamp(34px, 6vw, 72px);
-  height: clamp(50px, 9vw, 106px);
-  perspective: 600px;
-  filter: drop-shadow(0 2px 6px rgba(0,0,0,0.5));
-}
-
-/* Static halves */
-.gf-top,
-.gf-bottom {
-  position: absolute;
-  left: 0;
-  width: 100%;
-  height: 50%;
-  overflow: hidden;
-  background: rgba(12,12,22,0.88);
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  backdrop-filter: blur(4px);
-}
-
-.gf-top {
-  top: 0;
-  border-radius: 4px 4px 0 0;
-  align-items: flex-end;
-  border-bottom: 1px solid rgba(0,0,0,0.6);
-  background: linear-gradient(180deg, rgba(28,28,44,0.92) 0%, rgba(18,18,30,0.9) 100%);
-}
-
-.gf-bottom {
-  bottom: 0;
-  border-radius: 0 0 4px 4px;
-  align-items: flex-start;
-  background: linear-gradient(180deg, rgba(14,14,24,0.9) 0%, rgba(8,8,16,0.92) 100%);
-  box-shadow: 0 3px 8px rgba(0,0,0,0.6);
-}
-
-/* Flap text */
-.gf-text {
-  font-family: 'Noto Sans TC', 'PingFang TC', 'Microsoft JhengHei', 'Inter', sans-serif;
-  font-size: clamp(26px, 4.5vw, 58px);
-  font-weight: 300;
+/* Globe Destination Pure Text */
+.globe-dest-text {
+  font-family: 'Inter', sans-serif;
+  font-size: clamp(36px, 8vw, 80px);
+  font-weight: 700;
   color: #ffffff;
-  line-height: 1;
-  height: clamp(50px, 9vw, 106px);
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  letter-spacing: 1px;
+  letter-spacing: 2px;
+  text-transform: uppercase;
   text-shadow: 0 0 20px rgba(255,255,255,0.4);
-  user-select: none;
+  opacity: 0;
+  transform: translateY(6px);
+  transition: opacity 0.8s ease 0.4s, transform 0.8s ease 0.4s;
 }
 
-/* Chinese character variant — slightly wider cells */
-.globe-flap-char--zh {
-  width: clamp(44px, 7.5vw, 90px);
-  height: clamp(50px, 9vw, 106px);
+.globe-hud--visible .globe-dest-text {
+  opacity: 1;
+  transform: translateY(0);
 }
 
-/* Flip panels */
-.gf-flip-top,
-.gf-flip-bottom {
-  position: absolute;
-  left: 0;
-  width: 100%;
-  height: 50%;
-  overflow: hidden;
-  transform-style: preserve-3d;
-  backface-visibility: hidden;
-  z-index: 10;
-}
-
-.gf-flip-top {
-  top: 0;
-  transform-origin: bottom center;
-  border-radius: 4px 4px 0 0;
-  background: linear-gradient(180deg, rgba(28,28,44,0.92) 0%, rgba(18,18,30,0.9) 100%);
-  border-bottom: 1px solid rgba(0,0,0,0.6);
-}
-
-.gf-flip-bottom {
-  bottom: 0;
-  transform-origin: top center;
-  border-radius: 0 0 4px 4px;
-  background: linear-gradient(180deg, rgba(14,14,24,0.9) 0%, rgba(8,8,16,0.92) 100%);
-  transform: rotateX(90deg);
-}
-
-.gf-flip-top .gf-text {
-  position: absolute;
-  bottom: 0;
-  width: 100%;
-}
-
-.gf-flip-bottom .gf-text {
-  position: absolute;
-  top: 0;
-  width: 100%;
-}
-
-/* Centre divider line */
-.globe-flap-char::after {
-  content: '';
-  position: absolute;
-  left: 0;
-  top: calc(50% - 0.5px);
-  width: 100%;
-  height: 1px;
-  background: rgba(0,0,0,0.7);
-  z-index: 20;
-  pointer-events: none;
-}
-
-/* Flip keyframes */
-@keyframes gfFlipTop {
-  0%   { transform: rotateX(0deg);  }
-  100% { transform: rotateX(-90deg); }
-}
-
-@keyframes gfFlipBot {
-  0%   { transform: rotateX(90deg); }
-  100% { transform: rotateX(0deg);  }
-}
-
-.gf-flip-top.gf-flipping-top {
-  animation: gfFlipTop 0.18s cubic-bezier(0.4,0,0.2,1) forwards;
-}
-
-.gf-flip-bottom.gf-flipping-bot {
-  animation: gfFlipBot 0.18s cubic-bezier(0.4,0,0.2,1) forwards;
-  animation-delay: 0.08s;
+/* Fix globe.gl default tooltip showing as a white bar */
+.scene-tooltip {
+  display: none !important;
+  opacity: 0 !important;
+  visibility: hidden !important;
+  width: 0 !important;
+  height: 0 !important;
+  pointer-events: none !important;
 }
 
 /* --- Split Flap Board Overrides --- */

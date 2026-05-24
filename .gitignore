@@ -1,0 +1,29 @@
+# Videos
+*.mp4
+
+# Extracted frames directory
+frames/
+
+# Node modules & dependencies
+node_modules/
+package.json
+package-lock.json
+
+# Python virtual environment
+venv/
+
+# Debug and test scripts created during development
+test.js
+test2.js
+test_screenshot.js
+dump.js
+screenshot_*.png
+
+# OS generated files
+.DS_Store
+.DS_Store?
+._*
+.Spotlight-V100
+.Trashes
+ehthumbs.db
+Thumbs.db

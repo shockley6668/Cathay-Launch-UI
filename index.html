@@ -43,12 +43,15 @@
 
     <!-- Center: "Enjoy your flight to" + animated destination name -->
     <div class="globe-hud-center">
-      <div class="globe-enjoy-label" id="globe-enjoy-label">享受您的旅程</div>
-      <!-- Split-flap destination name row (rendered by JS) -->
-      <div class="globe-dest-flap-row" id="globe-dest-flap-row"></div>
+      <div class="globe-enjoy-label" id="globe-enjoy-label">Enjoy your journey</div>
+      <!-- Destination name -->
+      <div class="globe-dest-text" id="globe-dest-text">TORONTO</div>
     </div>
 
   </div>
+
+  <!-- Audio for background music -->
+  <audio id="bg-audio" src="assets/26436501555-1-30280.mp4" preload="auto" loop></audio>
 
   <!-- ========== Split-Flap Scene (Departure Board) ========== -->
   <div id="flap-scene" class="flap-scene hidden-scene" style="display:none">
@@ -100,16 +103,3 @@
   <script src="js/app.js"></script>
 </body>
 </html>
-<div id="debug-log" style="position: fixed; z-index: 999999; color: #ff0000; top: 10px; left: 10px; font-family: monospace; font-size: 14px; pointer-events: none; text-shadow: 1px 1px 0 #000;"></div>
-<script>
-  const dl = document.getElementById('debug-log');
-  window.onerror = function(msg, url, lineNo, columnNo, error) {
-    dl.innerHTML += msg + ' @ ' + lineNo + '<br>';
-    return false;
-  };
-  const oldErr = console.error;
-  console.error = function(...args) {
-    dl.innerHTML += args.join(' ') + '<br>';
-    oldErr.apply(console, args);
-  };
-</script>

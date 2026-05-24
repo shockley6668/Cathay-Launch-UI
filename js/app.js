@@ -126,148 +126,7 @@ class CabinMusic {
 }
 
 // ── Globe HUD Split-Flap ──────────────────────────────────────
-// Renders large split-flap characters inside #globe-dest-flap-row
-class GlobeFlapDisplay {
-  constructor(rowEl) {
-    this.rowEl    = rowEl;
-    this.cells    = [];
-    this.CHARS    = ' ABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789-';
-    this.built    = false;
-  }
-
-  _buildCells(count) {
-    this.rowEl.innerHTML = '';
-    this.cells = [];
-    for (let i = 0; i < count; i++) {
-      const wrapper = document.createElement('div');
-      wrapper.className = 'globe-flap-char';
-      wrapper.innerHTML = `
-        <div class="gf-top"><span class="gf-text"> </span></div>
-        <div class="gf-bottom"><span class="gf-text"> </span></div>
-        <div class="gf-flip-top"><span class="gf-text"> </span></div>
-        <div class="gf-flip-bottom"><span class="gf-text"> </span></div>
-      `;
-      this.rowEl.appendChild(wrapper);
-      this.cells.push({
-        el:          wrapper,
-        currentChar: ' ',
-        topText:     wrapper.querySelector('.gf-top .gf-text'),
-        botText:     wrapper.querySelector('.gf-bottom .gf-text'),
-        ftop:        wrapper.querySelector('.gf-flip-top'),
-        fbot:        wrapper.querySelector('.gf-flip-bottom'),
-        ftopText:    wrapper.querySelector('.gf-flip-top .gf-text'),
-        fbotText:    wrapper.querySelector('.gf-flip-bottom .gf-text'),
-      });
-    }
-    this.built = true;
-  }
-
-  _seq(from, to) {
-    const C = this.CHARS;
-    let a = C.indexOf(from); if (a < 0) a = 0;
-    let b = C.indexOf(to);   if (b < 0) b = 0;
-    if (a === b) return [from];
-    const s = [];
-    let i = a;
-    while (i !== b) { s.push(C[i]); i = (i+1)%C.length; }
-    s.push(C[b]);
-    return s;
-  }
-
-  _flipCell(cell, targetChar, delay, onDone) {
-    if (cell.currentChar === targetChar) { if(onDone) onDone(); return; }
-    const seq = this._seq(cell.currentChar, targetChar);
-    let idx = 1;
-
-    const step = () => {
-      if (idx >= seq.length) { cell.currentChar = targetChar; if(onDone) onDone(); return; }
-      const curr = seq[idx - 1], next = seq[idx];
-      cell.topText.textContent  = next;
-      cell.botText.textContent  = curr;
-      cell.ftopText.textContent = curr;
-      cell.fbotText.textContent = next;
-
-      cell.ftop.classList.remove('gf-flipping-top');
-      cell.fbot.classList.remove('gf-flipping-bot');
-      void cell.ftop.offsetWidth;
-      cell.ftop.classList.add('gf-flipping-top');
-      cell.fbot.classList.add('gf-flipping-bot');
-
-      setTimeout(() => {
-        cell.topText.textContent = next;
-        cell.botText.textContent = next;
-        cell.ftopText.textContent = next;
-        cell.fbotText.textContent = next;
-        cell.ftop.classList.remove('gf-flipping-top');
-        cell.fbot.classList.remove('gf-flipping-bot');
-        cell.currentChar = next;
-        idx++;
-        setTimeout(step, 110);
-      }, 180);
-    };
-
-    setTimeout(step, delay);
-  }
-
-  // Detect if text contains CJK characters
-  _isChinese(text) {
-    return /[\u4e00-\u9fff\u3400-\u4dbf]/.test(text);
-  }
-
-  // Chinese mode: render each char in a panel with staggered fade-in
-  _showChinese(chars) {
-    this.rowEl.innerHTML = '';
-    this.cells = [];
-    chars.forEach((ch, i) => {
-      const wrapper = document.createElement('div');
-      wrapper.className = 'globe-flap-char globe-flap-char--zh';
-      wrapper.innerHTML = `
-        <div class="gf-top"><span class="gf-text">${ch}</span></div>
-        <div class="gf-bottom"><span class="gf-text">${ch}</span></div>
-      `;
-      wrapper.style.opacity = '0';
-      wrapper.style.transform = 'translateY(10px)';
-      wrapper.style.transition = `opacity 0.5s ease ${i * 0.12}s, transform 0.5s ease ${i * 0.12}s`;
-      this.rowEl.appendChild(wrapper);
-      this.cells.push({ el: wrapper, currentChar: ch });
-      // Trigger animation
-      requestAnimationFrame(() => requestAnimationFrame(() => {
-        wrapper.style.opacity = '1';
-        wrapper.style.transform = 'translateY(0)';
-      }));
-    });
-    this.built = true;
-  }
-
-  showText(text) {
-    // Determine if Chinese
-    if (this._isChinese(text)) {
-      const chars = Array.from(text); // Properly split Unicode
-      this._showChinese(chars);
-      return;
-    }
-
-    // English / alphanumeric: split-flap cycling animation
-    const upper = text.toUpperCase().replace(/[^A-Z0-9 \-]/g, '');
-    const padded = upper.padEnd(Math.max(upper.length, 1), ' ');
-
-    if (!this.built || this.cells.length !== padded.length) {
-      this._buildCells(padded.length);
-    }
-
-    for (let i = 0; i < padded.length; i++) {
-      const target = padded[i];
-      if (this.cells[i].currentChar === target) continue;
-      this._flipCell(this.cells[i], target, i * 55, null);
-    }
-  }
-
-  reset() {
-    this.rowEl.innerHTML = '';
-    this.cells = [];
-    this.built = false;
-  }
-}
+// Removed split-flap from globe HUD to match reference video.
 
 // ── Main Application ──────────────────────────────────────────
 class IFEApplication {
@@ -275,7 +134,6 @@ class IFEApplication {
     this.state              = AppState.START_SCREEN;
     this.flights            = window.destinations || [];
     this.currentFlightIndex = 0;
-    this.music              = new CabinMusic();
 
     // DOM
     this.startScreen  = document.getElementById('start-screen');
@@ -283,9 +141,10 @@ class IFEApplication {
     this.starfield    = document.getElementById('starfield');
     this.globeHud     = document.getElementById('globe-hud');
     this.globeEnjoy   = document.getElementById('globe-enjoy-label');
-    this.globeDestRow = document.getElementById('globe-dest-flap-row');
+    this.globeDestText= document.getElementById('globe-dest-text');
     this.flapScene    = document.getElementById('flap-scene');
     this.flapTouchHint= document.getElementById('flap-touch-hint');
+    this.bgAudio      = document.getElementById('bg-audio');
 
     if (!this.flights.length) {
       this.flights = [{
@@ -297,8 +156,7 @@ class IFEApplication {
       }];
     }
 
-    // Globe HUD flap display
-    this.globeFlap = new GlobeFlapDisplay(this.globeDestRow);
+    // Globe HUD flap display removed
 
     this.init();
   }
@@ -369,14 +227,16 @@ class IFEApplication {
   // ── Tap Handlers ───────────────────────────────────────────
   handleFirstTap() {
     if (this.state !== AppState.START_SCREEN) return;
-    this.music.init();
-    this.music.playCabinChime();
+    if (this.bgAudio) {
+      this.bgAudio.currentTime = 118; // Start music at 1:58
+      this.bgAudio.volume = 0.5;
+      this.bgAudio.play().catch(e => console.warn('Audio play failed:', e));
+    }
     this.transitionTo(AppState.GLOBE_SCENE);
   }
 
   handleNextFlightTap() {
     if (this.state !== AppState.BOARD_SCENE) return;
-    this.music.playCabinChime();
     this.currentFlightIndex = (this.currentFlightIndex + 1) % this.flights.length;
     this.transitionTo(AppState.GLOBE_SCENE);
   }
@@ -423,8 +283,9 @@ class IFEApplication {
             setTimeout(() => window.dispatchEvent(new Event('resize')), 100);
           }
 
-          // Reset flap display
-          this.globeFlap.reset();
+          if (this.globeDestText) {
+            this.globeDestText.textContent = '';
+          }
 
           // Start the 3D flight animation
           this.startGlobeFlight();
@@ -438,10 +299,13 @@ class IFEApplication {
         if (this.globeHud) {
           this.globeHud.classList.add('globe-hud--visible');
         }
-        // Use destinationName (may be Chinese) for the globe HUD overlay
+        // Use English text like the reference video
         const flight = this.flights[this.currentFlightIndex];
-        if (flight) {
-          this.globeFlap.showText(flight.destinationName);
+        if (flight && this.globeEnjoy) {
+          this.globeEnjoy.textContent = 'Enjoy your journey';
+          if (this.globeDestText) {
+            this.globeDestText.textContent = flight.destinationName;
+          }
         }
         break;
       }
