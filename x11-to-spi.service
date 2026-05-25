@@ -1,0 +1,15 @@
+[Unit]
+Description=X11 to SPI Display Mirror (ST7796S)
+After=lightdm.service display-manager.service
+
+[Service]
+Type=simple
+Environment=DISPLAY=:0
+Environment=XAUTHORITY=/home/sunrise/.Xauthority
+ExecStart=/home/sunrise/cathay_ui/x11-to-spi
+Restart=always
+RestartSec=3
+User=root
+
+[Install]
+WantedBy=graphical.target

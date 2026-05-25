@@ -1,0 +1,10 @@
+[Desktop Entry]
+Encoding=UTF-8
+Version=1.0
+Type=Application
+Terminal=false
+Exec=/home/sunrise/cathay_ui/autostart-kiosk.sh
+Name=Cathay Pacific IFE Kiosk
+Comment=Launch Chromium Kiosk and start local web server
+X-GNOME-Autostart-enabled=true
+StartupNotify=false

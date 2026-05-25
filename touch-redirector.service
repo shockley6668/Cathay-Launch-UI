@@ -1,0 +1,15 @@
+[Unit]
+Description=GT911 Touch Redirector to X11 (xdotool)
+After=lightdm.service display-manager.service
+
+[Service]
+Type=simple
+Environment=DISPLAY=:0
+Environment=XAUTHORITY=/home/sunrise/.Xauthority
+ExecStart=/usr/bin/python3 /home/sunrise/cathay_ui/touch_redirector.py
+Restart=always
+RestartSec=3
+User=root
+
+[Install]
+WantedBy=graphical.target
