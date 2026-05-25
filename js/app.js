@@ -8,125 +8,11 @@
 const AppState = {
   START_SCREEN:       'START_SCREEN',
   GLOBE_SCENE:        'GLOBE_SCENE',
-  GLOBE_ARRIVE:       'GLOBE_ARRIVE',     // Camera zoomed in to destination
-  GLOBE_PULLBACK:     'GLOBE_PULLBACK',   // Earth in lower half, text appears
-  TRANSITION_TO_BOARD:'TRANSITION_TO_BOARD',
-  BOARD_SCENE:        'BOARD_SCENE'
+  DEST_REVEAL:        'DEST_REVEAL',      // Shows destination rolling
+  GLOBE_ARRIVE:       'GLOBE_ARRIVE'      // Camera zoomed in to destination
 };
 
-// ── Cabin Audio Synthesizer ───────────────────────────────────
-class CabinMusic {
-  constructor() {
-    this.ctx          = null;
-    this.masterGain   = null;
-    this.filter       = null;
-    this.isPlaying    = false;
-    this.chordIndex   = 0;
-    this.chordTimeout = null;
-    this.chimeInterval= null;
-
-    // Fmaj9 → Cmaj9 → Bbmaj9 → Am9
-    this.chords = [
-      [87.31, 130.81, 220.00, 329.63, 392.00],
-      [65.41, 98.00,  164.81, 246.94, 293.66],
-      [116.54,174.61, 293.66, 440.00, 523.25],
-      [110.00,164.81, 261.63, 392.00, 493.88]
-    ];
-  }
-
-  init() {
-    if (this.isPlaying) return;
-    try {
-      const AC   = window.AudioContext || window.webkitAudioContext;
-      this.ctx   = new AC();
-      this.masterGain = this.ctx.createGain();
-      this.masterGain.gain.setValueAtTime(0.07, this.ctx.currentTime);
-      this.filter = this.ctx.createBiquadFilter();
-      this.filter.type                     = 'lowpass';
-      this.filter.frequency.setValueAtTime(480, this.ctx.currentTime);
-      this.filter.connect(this.masterGain);
-      this.masterGain.connect(this.ctx.destination);
-      this.isPlaying = true;
-      if (this.ctx.state === 'suspended') this.ctx.resume();
-      this.playNextChord();
-      this.startChimeLoop();
-    } catch (e) { console.warn('Audio init failed:', e); }
-  }
-
-  playNextChord() {
-    if (!this.isPlaying || !this.ctx) return;
-    const freqs    = this.chords[this.chordIndex];
-    this.chordIndex = (this.chordIndex + 1) % this.chords.length;
-    const now      = this.ctx.currentTime;
-    const dur      = 12, fade = 4;
-    const vg       = this.ctx.createGain();
-    vg.gain.setValueAtTime(0, now);
-    vg.gain.linearRampToValueAtTime(0.14, now + fade);
-    vg.gain.setValueAtTime(0.14, now + dur - fade);
-    vg.gain.linearRampToValueAtTime(0, now + dur);
-    vg.connect(this.filter);
-    freqs.forEach(freq => {
-      const o1 = this.ctx.createOscillator(), o2 = this.ctx.createOscillator();
-      o1.type = 'triangle'; o1.frequency.setValueAtTime(freq - 1.2, now);
-      o2.type = 'sine';     o2.frequency.setValueAtTime(freq + 1.2, now);
-      o1.connect(vg); o2.connect(vg);
-      o1.start(now);  o2.start(now);
-      setTimeout(() => { try{o1.stop();o2.stop();}catch(e){} }, (dur + 0.5) * 1000);
-    });
-    this.chordTimeout = setTimeout(() => this.playNextChord(), (dur - fade) * 1000);
-  }
-
-  playCabinChime() {
-    if (!this.isPlaying || !this.ctx) return;
-    const now = this.ctx.currentTime;
-    this._chime(880,    now,        2.5);
-    this._chime(1109.73,now + 0.05, 2.3);
-    this._chime(783.99, now + 0.8,  3.0);
-    this._chime(987.77, now + 0.85, 2.8);
-  }
-
-  _chime(freq, t, dur) {
-    if (!this.ctx || !this.masterGain) return;
-    const osc = this.ctx.createOscillator();
-    const g   = this.ctx.createGain();
-    osc.type = 'sine';
-    osc.frequency.setValueAtTime(freq, t);
-    g.gain.setValueAtTime(0, t);
-    g.gain.linearRampToValueAtTime(0.011, t + 0.04);
-    g.gain.exponentialRampToValueAtTime(0.0001, t + dur);
-    const delay    = this.ctx.createDelay();
-    const feedback = this.ctx.createGain();
-    delay.delayTime.setValueAtTime(0.25, t);
-    feedback.gain.setValueAtTime(0.22, t);
-    osc.connect(g);
-    g.connect(this.masterGain);
-    g.connect(delay);
-    delay.connect(feedback);
-    feedback.connect(delay);
-    feedback.connect(this.masterGain);
-    osc.start(t);
-    osc.stop(t + dur + 0.5);
-  }
-
-  startChimeLoop() {
-    const next = () => {
-      if (!this.isPlaying) return;
-      this.chimeInterval = setTimeout(() => { this.playCabinChime(); next(); },
-        30000 + Math.random() * 15000);
-    };
-    next();
-  }
-
-  stop() {
-    this.isPlaying = false;
-    if (this.chordTimeout)  clearTimeout(this.chordTimeout);
-    if (this.chimeInterval) clearTimeout(this.chimeInterval);
-    if (this.ctx) this.ctx.close();
-  }
-}
-
-// ── Globe HUD Split-Flap ──────────────────────────────────────
-// Removed split-flap from globe HUD to match reference video.
+// ── Audio handled by <audio> tag in HTML ──────────────────────
 
 // ── Main Application ──────────────────────────────────────────
 class IFEApplication {
@@ -134,16 +20,13 @@ class IFEApplication {
     this.state              = AppState.START_SCREEN;
     this.flights            = window.destinations || [];
     this.currentFlightIndex = 0;
+    this.selectedLang       = 'en'; // default language
 
     // DOM
     this.startScreen  = document.getElementById('start-screen');
     this.globeContainer = document.getElementById('globe-container');
     this.starfield    = document.getElementById('starfield');
     this.globeHud     = document.getElementById('globe-hud');
-    this.globeEnjoy   = document.getElementById('globe-enjoy-label');
-    this.globeDestText= document.getElementById('globe-dest-text');
-    this.flapScene    = document.getElementById('flap-scene');
-    this.flapTouchHint= document.getElementById('flap-touch-hint');
     this.bgAudio      = document.getElementById('bg-audio');
 
     if (!this.flights.length) {
@@ -156,6 +39,12 @@ class IFEApplication {
       }];
     }
 
+    // Shuffle destinations with Fisher-Yates
+    for (let i = this.flights.length - 1; i > 0; i--) {
+      const j = Math.floor(Math.random() * (i + 1));
+      [this.flights[i], this.flights[j]] = [this.flights[j], this.flights[i]];
+    }
+
     // Globe HUD flap display removed
 
     this.init();
@@ -165,16 +54,24 @@ class IFEApplication {
     this.initStarfield();
     this.initClock();
 
-    this.startScreen.addEventListener('click',      () => this.handleFirstTap());
-    this.startScreen.addEventListener('touchstart', e => { e.preventDefault(); this.handleFirstTap(); });
-    this.flapTouchHint.addEventListener('click',      () => this.handleNextFlightTap());
-    this.flapTouchHint.addEventListener('touchstart', e => { e.preventDefault(); this.handleNextFlightTap(); });
+    const langItems = document.querySelectorAll('.lang-list li');
+    langItems.forEach(item => {
+      const handler = () => {
+        const langMap = {
+          'English': 'en', '繁體中文': 'zh-TW', '簡體中文': 'zh-CN',
+          '日本語': 'ja', '한국어': 'ko', 'Français': 'fr', 'Deutsch': 'de', 'Kids': 'en'
+        };
+        this.selectedLang = langMap[item.textContent.trim()] || 'en';
+        console.log('[IFE] Language selected:', this.selectedLang, 'from text:', item.textContent.trim());
+        this.handleFirstTap();
+      };
+      item.addEventListener('click', handler);
+      item.addEventListener('touchstart', e => { e.preventDefault(); handler(); });
+    });
 
     // Init sub-modules
     const gs = window.GlobeScene;
     if (gs && gs.init) gs.init('globe-container');
-    const sfb = window.SplitFlapBoard;
-    if (sfb && sfb.init) sfb.init();
   }
 
   initClock() {
@@ -195,23 +92,16 @@ class IFEApplication {
     let W = canvas.width  = window.innerWidth;
     let H = canvas.height = window.innerHeight;
 
-    const stars = Array.from({ length: 80 }, () => ({
-      x: Math.random() * W, y: Math.random() * H,
+    const stars = Array.from({ length: 30 }, () => ({
+      x: Math.random() * W,
+      y: Math.random() * H,
       r: Math.random() * 1.2 + 0.3,
-      a: Math.random() * 0.7 + 0.15,
-      da: (Math.random() * 0.012 + 0.004) * (Math.random() > 0.5 ? 1 : -1)
+      a: Math.random() * 0.7 + 0.15
     }));
-
-    window.addEventListener('resize', () => {
-      W = canvas.width  = window.innerWidth;
-      H = canvas.height = window.innerHeight;
-    });
 
     const draw = () => {
       ctx.clearRect(0, 0, W, H);
       stars.forEach(s => {
-        s.a += s.da;
-        if (s.a > 0.9 || s.a < 0.1) s.da = -s.da;
         ctx.globalAlpha = s.a;
         ctx.fillStyle   = '#fff';
         ctx.beginPath();
@@ -219,9 +109,32 @@ class IFEApplication {
         ctx.fill();
       });
       ctx.globalAlpha = 1;
-      requestAnimationFrame(draw);
     };
+
+    window.addEventListener('resize', () => {
+      W = canvas.width  = window.innerWidth;
+      H = canvas.height = window.innerHeight;
+      stars.forEach(s => {
+        s.x = Math.random() * W;
+        s.y = Math.random() * H;
+      });
+      draw();
+    });
+
     draw();
+  }
+
+  // ── Destination Name by Language ────────────────────────
+  getDestName(flight) {
+    const lang = this.selectedLang;
+    console.log('[IFE] getDestName: lang=', lang, 'destName=', flight.destinationName, 'destNameCn=', flight.destinationNameCn, 'destNameCnS=', flight.destinationNameCnS);
+    if (lang === 'zh-TW') {
+      return flight.destinationNameCn || flight.destinationName || flight.destination;
+    }
+    if (lang === 'zh-CN') {
+      return flight.destinationNameCnS || flight.destinationNameCn || flight.destinationName || flight.destination;
+    }
+    return flight.destinationName || flight.destination;
   }
 
   // ── Tap Handlers ───────────────────────────────────────────
@@ -235,19 +148,13 @@ class IFEApplication {
     this.transitionTo(AppState.GLOBE_SCENE);
   }
 
-  handleNextFlightTap() {
-    if (this.state !== AppState.BOARD_SCENE) return;
-    this.currentFlightIndex = (this.currentFlightIndex + 1) % this.flights.length;
-    this.transitionTo(AppState.GLOBE_SCENE);
-  }
-
   // ── State Machine ──────────────────────────────────────────
   transitionTo(nextState) {
     console.log(`[IFE] ${this.state} → ${nextState}`);
     this.state = nextState;
 
     switch (nextState) {
-      // ── GLOBE_SCENE ────────────────────────────────────────
+      // ── GLOBE_SCENE (Initial Tap) ──────────────────────────
       case AppState.GLOBE_SCENE: {
         // Sweep wipe animation
         const sweep = document.getElementById('sweep-transition');
@@ -262,110 +169,241 @@ class IFEApplication {
             this.startScreen.classList.add('hidden-scene');
             setTimeout(() => { this.startScreen.style.display = 'none'; }, 600);
           }
-          // Hide board scene
-          if (this.flapScene) {
-            this.flapScene.classList.remove('visible-scene');
-            this.flapScene.classList.add('hidden-scene');
-          }
-          // Hide globe HUD until arrive
-          if (this.globeHud) {
-            this.globeHud.classList.remove('globe-hud--visible');
-          }
-
+          
           // Show globe
           if (this.globeContainer) {
-            this.globeContainer.style.display = 'block';
-            // Force reflow before removing hidden class so transition fires
-            void this.globeContainer.offsetWidth;
             this.globeContainer.classList.remove('hidden-scene');
             this.globeContainer.classList.add('visible-scene');
-            // Trigger resize so Globe.gl recalculates its canvas dimensions
             setTimeout(() => window.dispatchEvent(new Event('resize')), 100);
           }
 
-          if (this.globeDestText) {
-            this.globeDestText.textContent = '';
-          }
-
-          // Start the 3D flight animation
-          this.startGlobeFlight();
+          // Go directly to DEST_REVEAL after globe is visible
+          setTimeout(() => this.transitionTo(AppState.DEST_REVEAL), 100);
         }, 850);
         break;
       }
 
-      // ── GLOBE_ARRIVE: camera at destination, show text ────
-      case AppState.GLOBE_ARRIVE: {
-        // Show the HUD overlay
+      // ── DEST_REVEAL: Show HUD, roll text, wait, then fly ──
+      case AppState.DEST_REVEAL: {
+        // Show Cathay logo first
         if (this.globeHud) {
           this.globeHud.classList.add('globe-hud--visible');
-        }
-        // Use English text like the reference video
-        const flight = this.flights[this.currentFlightIndex];
-        if (flight && this.globeEnjoy) {
-          this.globeEnjoy.textContent = 'Enjoy your journey';
-          if (this.globeDestText) {
-            this.globeDestText.textContent = flight.destinationName;
+          // Toggle cjk-mode on HUD content
+          const hudContent = document.querySelector('.globe-hud-content');
+          if (hudContent) {
+            const isCJK = (this.selectedLang === 'zh-TW' || this.selectedLang === 'zh-CN' || this.selectedLang === 'ja' || this.selectedLang === 'ko');
+            hudContent.classList.toggle('cjk-mode', isCJK);
           }
         }
+
+        const flight = this.flights[this.currentFlightIndex];
+
+        // After 1.5s, show localized subtitle + rolling text
+        setTimeout(() => {
+          const subtitle = document.getElementById('rolling-subtitle');
+          if (subtitle) {
+            const subtitles = {
+              'en': 'Enjoy your flight to',
+              'zh-TW': '請享受前往',
+              'zh-CN': '请享受前往',
+              'ja': 'ご搭乗ください',
+              'ko': '행운의 비행을',
+              'fr': 'Bon vol vers',
+              'de': 'Guten Flug nach',
+            };
+            subtitle.textContent = subtitles[this.selectedLang] || subtitles['en'];
+            subtitle.style.opacity = '1';
+          }
+
+          console.log('[IFE] DEST_REVEAL: selectedLang=', this.selectedLang);
+          if (flight) {
+            const destName = this.getDestName(flight);
+            console.log('[IFE] DEST_REVEAL: destName=', destName);
+            this.revealDestination(destName);
+          }
+        }, 1500);
+
+        // Wait 5.5 seconds total for text roll to finish + hold, then start flight
+        setTimeout(() => {
+          if (this.globeHud) {
+            this.globeHud.classList.remove('globe-hud--visible');
+          }
+          // Hide subtitle
+          const subtitle = document.getElementById('rolling-subtitle');
+          if (subtitle) subtitle.style.opacity = '0';
+          // small delay for hud to fade out before camera moves
+          setTimeout(() => {
+            this.startGlobeFlight();
+          }, 600);
+        }, 5500);
         break;
       }
 
-      // ── TRANSITION_TO_BOARD ────────────────────────────────
-      case AppState.TRANSITION_TO_BOARD: {
-        // Fade out globe HUD
+      // ── GLOBE_ARRIVE: camera at destination, wait to board ──
+      case AppState.GLOBE_ARRIVE: {
+        const flight = this.flights[this.currentFlightIndex];
+        const destText = document.getElementById('globe-dest-text');
+        const enjoyLabel = document.querySelector('.globe-enjoy-label');
+        const rolling = document.getElementById('rolling-text-container');
+        const finalText = document.getElementById('final-text-container');
+
+        // Toggle cjk-mode on HUD content
+        const hudContent = document.querySelector('.globe-hud-content');
+        if (hudContent) {
+          const isCJK = (this.selectedLang === 'zh-TW' || this.selectedLang === 'zh-CN' || this.selectedLang === 'ja' || this.selectedLang === 'ko');
+          hudContent.classList.toggle('cjk-mode', isCJK);
+        }
+
+        if (destText && flight) {
+          destText.textContent = this.getDestName(flight);
+        }
+        if (enjoyLabel) {
+          const enjoyLabels = {
+            'en': 'Enjoy your journey',
+            'zh-TW': '享受你的旅程',
+            'zh-CN': '享受你的旅程',
+            'ja': '良い旅を',
+            'ko': '좋은 여행 되세요',
+            'fr': 'Bon voyage',
+            'de': 'Gute Reise',
+          };
+          enjoyLabel.textContent = enjoyLabels[this.selectedLang] || enjoyLabels['en'];
+          enjoyLabel.style.display = '';
+        }
+        if (rolling) rolling.style.display = 'none';
+        if (finalText) finalText.style.display = 'flex';
+        
         if (this.globeHud) {
-          this.globeHud.classList.remove('globe-hud--visible');
+          this.globeHud.classList.add('end-scene');
+          this.globeHud.classList.add('globe-hud--visible');
         }
-        // Fade out globe
-        if (this.globeContainer) {
-          this.globeContainer.classList.remove('visible-scene');
-          this.globeContainer.classList.add('hidden-scene');
+        
+        
+        if (window.GlobeScene && window.GlobeScene.shiftCameraToBottom) {
+          window.GlobeScene.shiftCameraToBottom(2000);
         }
-        // Fade in board
-        if (this.flapScene) {
-          this.flapScene.style.display = 'flex';
-          this.flapScene.classList.remove('hidden-scene');
-          this.flapScene.classList.add('visible-scene');
-        }
-        setTimeout(() => this.transitionTo(AppState.BOARD_SCENE), 1100);
-        break;
-      }
-
-      // ── BOARD_SCENE ────────────────────────────────────────
-      case AppState.BOARD_SCENE: {
-        this.triggerFlapsUpdate();
         break;
       }
     }
   }
 
+  revealDestination(targetName) {
+    const container = document.getElementById('rolling-text-container');
+    if (!container) return;
+
+    container.innerHTML = '';
+
+    const lang = this.selectedLang;
+    const isCJK = (lang === 'zh-TW' || lang === 'zh-CN' || lang === 'ja' || lang === 'ko');
+    container.classList.toggle('rolling-text-cjk', isCJK);
+
+    const enChars = 'ABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789';
+    const zhTWChars = '香港新加坡東京首爾台北大阪上海北京廣州成都廈門武漢曼谷吉隆坡馬尼拉雅加達河內孟買迪拜倫敦巴黎法蘭克福阿姆斯特丹蘇黎世米蘭多倫多洛杉磯紐約舊金山溫哥華芝加哥雪梨墨爾本奧克蘭';
+    const zhCNChars = '香港新加坡东京首尔台北大阪上海北京广州成都厦门武汉曼谷吉隆坡马尼拉雅加达河内孟买迪拜伦敦巴黎法兰克福阿姆斯特丹苏黎世米兰多伦多洛杉矶纽约旧金山温哥华芝加哥雪梨墨尔本奥克兰';
+    const chars = (lang === 'zh-CN') ? zhCNChars : (isCJK ? zhTWChars : enChars);
+
+    const letters = targetName.split('');
+    const numRolls = 45;
+    const charHeight = 60;
+
+    letters.forEach((targetChar, index) => {
+      const col = document.createElement('div');
+      col.className = 'rolling-char-col';
+
+      const inner = document.createElement('div');
+      inner.className = 'rolling-char-inner';
+      col.appendChild(inner);
+      container.appendChild(col);
+
+      if (targetChar === ' ') {
+        const space = document.createElement('div');
+        space.className = 'rolling-char';
+        space.innerHTML = '&nbsp;';
+        inner.appendChild(space);
+        return;
+      }
+
+      // For CJK characters, use full-width space for consistency
+      const displayTarget = (isCJK && targetChar !== ' ') ? targetChar : targetChar;
+
+      for (let i = 0; i < numRolls; i++) {
+        const charDiv = document.createElement('div');
+        charDiv.className = 'rolling-char blur';
+
+        if (i === numRolls - 1) {
+          charDiv.textContent = displayTarget;
+          charDiv.classList.remove('blur');
+        } else {
+          charDiv.textContent = chars[Math.floor(Math.random() * chars.length)];
+        }
+        inner.appendChild(charDiv);
+      }
+
+      inner.style.transform = `translateY(0px)`;
+
+      setTimeout(() => {
+        inner.style.transition = `transform 3.2s cubic-bezier(0.1, 0.8, 0.2, 1)`;
+        inner.style.transform = `translateY(-${(numRolls - 1) * charHeight}px)`;
+
+        setTimeout(() => {
+          Array.from(inner.children).forEach(child => child.classList.remove('blur'));
+        }, 2800);
+      }, 200 + index * 100);
+    });
+  }
+
   startGlobeFlight() {
     const flight = this.flights[this.currentFlightIndex];
     if (!flight) return;
-
-    const gs = window.GlobeScene;
-    if (gs && gs.startFlight) {
+    if (window.GlobeScene) {
       const dest = {
         lat:  flight.destCoords.lat,
         lng:  flight.destCoords.lng,
         name: flight.destinationName
       };
 
-      gs.startFlight(dest, () => {
-        // Globe scene calls onComplete after "pull-back" phase
-        // → show text HUD
+      window.GlobeScene.startFlight(dest, () => {
+        // Flight finished
         this.transitionTo(AppState.GLOBE_ARRIVE);
-
-        // Hold the arrive scene for 3s, then transition to board
+        
+        // Wait 5 seconds, then reset to start screen for next flight
         setTimeout(() => {
-          this.transitionTo(AppState.TRANSITION_TO_BOARD);
-        }, 3500);
+          this.currentFlightIndex = (this.currentFlightIndex + 1) % this.flights.length;
+          
+          // Fade out globe and HUD
+          if (this.globeContainer) {
+            this.globeContainer.classList.remove('visible-scene');
+            this.globeContainer.classList.add('hidden-scene');
+          }
+          if (this.globeHud) {
+            this.globeHud.classList.remove('globe-hud--visible');
+            setTimeout(() => {
+              this.globeHud.classList.remove('end-scene');
+              const rolling = document.getElementById('rolling-text-container');
+              const finalText = document.getElementById('final-text-container');
+              if (rolling) rolling.style.display = 'flex';
+              if (finalText) finalText.style.display = 'none';
+            }, 1000);
+          }
+          
+          if (window.GlobeScene && window.GlobeScene.reset) {
+            window.GlobeScene.reset();
+          }
+          
+          // Fade in start screen
+          if (this.startScreen) {
+            this.startScreen.style.display = 'flex';
+            void this.startScreen.offsetWidth;
+            this.startScreen.classList.remove('hidden-scene');
+          }
+          
+          setTimeout(() => this.transitionTo(AppState.START_SCREEN), 1500);
+        }, 5000);
       });
     } else {
       // Fallback
       console.warn('[IFE] GlobeScene.startFlight not found – fallback');
       this.transitionTo(AppState.GLOBE_ARRIVE);
-      setTimeout(() => this.transitionTo(AppState.TRANSITION_TO_BOARD), 4000);
     }
   }
 

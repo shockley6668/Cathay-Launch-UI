@@ -22,6 +22,24 @@
     );
   }
 
+  function haversineDistance(lat1, lng1, lat2, lng2) {
+    const R = 6371;
+    const dLat = (lat2 - lat1) * Math.PI / 180;
+    const dLng = (lng2 - lng1) * Math.PI / 180;
+    const a = Math.sin(dLat / 2) ** 2 +
+              Math.cos(lat1 * Math.PI / 180) * Math.cos(lat2 * Math.PI / 180) *
+              Math.sin(dLng / 2) ** 2;
+    return R * 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1 - a));
+  }
+
+  function getAltitudeForRoute(destLat, destLng) {
+    const dist = haversineDistance(HKG_COORDS.lat, HKG_COORDS.lng, destLat, destLng);
+    // Short <2000km: 0.25 | Medium 2000-6000km: 0.45 | Long >6000km: 0.7
+    if (dist < 2000) return 0.25;
+    if (dist < 6000) return 0.45;
+    return 0.7;
+  }
+
   function createGreatCircleCurve(startLat, startLng, endLat, endLng, altitudeOffset, numPoints) {
     altitudeOffset = altitudeOffset || 0.12;
     numPoints = numPoints || 120;
@@ -38,82 +56,14 @@
     return new THREE.CatmullRomCurve3(points);
   }
 
-  // ── Airplane Model ───────────────────────────────────────────
+  // ── Airplane (2D sprite, constant screen size) ───────────────
   function createAirplane() {
-    const plane    = new THREE.Group();
-    const mat      = new THREE.MeshBasicMaterial({ color: 0xffffff, transparent: true, opacity: 0.95 });
-
-    // Fuselage – smooth cylinder
-    const fuselage = new THREE.Mesh(new THREE.CylinderGeometry(0.3, 0.3, 4.2, 16), mat);
-    fuselage.rotation.x = Math.PI / 2;
-    plane.add(fuselage);
-
-    // Nose cone – tapered
-    const nose = new THREE.Mesh(new THREE.ConeGeometry(0.3, 1.0, 16), mat);
-    nose.rotation.x = Math.PI / 2;
-    nose.position.z = 2.6;
-    plane.add(nose);
-
-    // Tail cone – tapered rear
-    const tailCone = new THREE.Mesh(new THREE.ConeGeometry(0.3, 0.8, 16), mat);
-    tailCone.rotation.x = -Math.PI / 2;
-    tailCone.position.z = -2.5;
-    plane.add(tailCone);
-
-    // Main wings – swept-back shape with proper proportions
-    const wingShape = new THREE.Shape();
-    wingShape.moveTo(0, 0);
-    wingShape.lineTo(-3.8, -0.8);
-    wingShape.lineTo(-4.0, -1.2);
-    wingShape.lineTo(-3.6, -1.3);
-    wingShape.lineTo(-0.4, -0.5);
-    wingShape.lineTo(0.4, -0.5);
-    wingShape.lineTo(3.6, -1.3);
-    wingShape.lineTo(4.0, -1.2);
-    wingShape.lineTo(3.8, -0.8);
-    wingShape.lineTo(0, 0);
-
-    const wingGeom = new THREE.ShapeGeometry(wingShape);
-    const wings    = new THREE.Mesh(wingGeom, mat);
-    wings.rotation.x = -Math.PI / 2;
-    wings.position.set(0, 0, 0.1);
-    plane.add(wings);
-
-    // Horizontal stabiliser
-    const stabShape = new THREE.Shape();
-    stabShape.moveTo(0, 0);
-    stabShape.lineTo(-1.5, -0.4);
-    stabShape.lineTo(-1.6, -0.6);
-    stabShape.lineTo(-1.4, -0.65);
-    stabShape.lineTo(0, -0.15);
-    stabShape.lineTo(1.4, -0.65);
-    stabShape.lineTo(1.6, -0.6);
-    stabShape.lineTo(1.5, -0.4);
-    stabShape.lineTo(0, 0);
-
-    const stabGeom = new THREE.ShapeGeometry(stabShape);
-    const stab     = new THREE.Mesh(stabGeom, mat);
-    stab.rotation.x = -Math.PI / 2;
-    stab.position.set(0, 0, -2.0);
-    plane.add(stab);
-
-    // Vertical fin – taller, more realistic
-    const finShape = new THREE.Shape();
-    finShape.moveTo(0, 0);
-    finShape.lineTo(0, 1.2);
-    finShape.lineTo(-0.15, 1.3);
-    finShape.lineTo(-0.3, 0.8);
-    finShape.lineTo(-0.35, 0);
-    finShape.lineTo(0, 0);
-
-    const finGeom = new THREE.ShapeGeometry(finShape);
-    const fin     = new THREE.Mesh(finGeom, mat);
-    fin.position.set(0, 0.3, -2.0);
-    fin.rotation.y = 0;
-    plane.add(fin);
-
-    plane.scale.set(0.55, 0.55, 0.55);
-    return plane;
+    const textureLoader = new THREE.TextureLoader();
+    const texture = textureLoader.load('assets/plane.png');
+    const material = new THREE.SpriteMaterial({ map: texture, transparent: true, depthTest: false });
+    const sprite = new THREE.Sprite(material);
+    sprite.scale.set(4, 4, 1);
+    return sprite;
   }
 
   // ── Init ─────────────────────────────────────────────────────
@@ -124,76 +74,42 @@
     globe = Globe()(container)
       .backgroundColor('rgba(0,0,0,0)')
       .showGlobe(true)
-      .showAtmosphere(true)
-      .atmosphereColor('#3b82f6')       // Natural blue atmosphere like Google Earth
-      .atmosphereAltitude(0.25);
+      .showAtmosphere(false)
+      .globeImageUrl('assets/earth_atmos_2048.jpg');
 
-    // Day / Night shader — natural sun position
-    const textureLoader = new THREE.TextureLoader();
-    const dayTex   = textureLoader.load('assets/earth_daymap_8k.jpg');
-    const nightTex = textureLoader.load('assets/earth_nightmap_8k.jpg');
+    // Force 1.0 pixel ratio for performance
+    globe.renderer().setPixelRatio(1.0);
 
-    // Sun over Western Pacific – HKG is in warm daylight, destination side varies
-    const sunPos = latLngToUnitVector(15, 95);
+    // Override camera updateProjectionMatrix to support smooth skew offset
+    const camera = globe.camera();
+    const originalUpdateProjectionMatrix = camera.updateProjectionMatrix;
+    camera.updateProjectionMatrix = function() {
+      originalUpdateProjectionMatrix.call(this);
+      this.projectionMatrix.elements[9] = window.currentCameraSkewY || 0;
+    };
 
-    const globeMaterial = new THREE.ShaderMaterial({
-      uniforms: {
-        dayTexture:   { value: dayTex },
-        nightTexture: { value: nightTex },
-        sunDirection: { value: sunPos }
-      },
-      vertexShader: `
-        varying vec2 vUv;
-        varying vec3 vNormal;
-        varying vec3 vPosition;
-        void main() {
-          vUv       = uv;
-          vNormal   = normalize((modelMatrix * vec4(normal, 0.0)).xyz);
-          vPosition = (modelMatrix * vec4(position, 1.0)).xyz;
-          gl_Position = projectionMatrix * modelViewMatrix * vec4(position, 1.0);
-        }
-      `,
-      fragmentShader: `
-        uniform sampler2D dayTexture;
-        uniform sampler2D nightTexture;
-        uniform vec3 sunDirection;
-        varying vec2 vUv;
-        varying vec3 vNormal;
-        varying vec3 vPosition;
-        void main() {
-          vec3 dayColor   = texture2D(dayTexture,   vUv).rgb;
-          vec3 nightColor = texture2D(nightTexture, vUv).rgb;
-
-          // Fresnel-like rim lighting for atmosphere edge glow
-          vec3 viewDir = normalize(cameraPosition - vPosition);
-          float fresnel = 1.0 - max(dot(viewDir, vNormal), 0.0);
-          fresnel = pow(fresnel, 3.0);
-
-          float intensity = dot(vNormal, sunDirection);
-          float blend     = smoothstep(-0.1, 0.3, intensity);
-
-          // Boost city lights on night side
-          vec3 boostedNight = nightColor * vec3(1.6, 1.4, 1.0);
-
-          // Blue atmosphere rim on day side
-          vec3 rimColor = mix(vec3(0.2, 0.5, 0.9), dayColor, 0.3);
-          vec3 finalColor = mix(boostedNight, dayColor, blend);
-          finalColor = mix(finalColor, rimColor, fresnel * 0.4 * blend);
-
-          gl_FragColor = vec4(finalColor, 1.0);
-        }
-      `
+    // Ensure globe resizes correctly when container becomes visible
+    window.addEventListener('resize', () => {
+      if (globe && container.clientWidth) {
+        globe.width(container.clientWidth);
+        globe.height(container.clientHeight);
+      }
     });
-
-    globe.globeMaterial(globeMaterial);
-
-    // Pixel ratio – no need for super high DPI on IFE screen
-    globe.renderer().setPixelRatio(Math.min(window.devicePixelRatio, 1.5));
 
     // Suppress tooltips
     globe.onGlobeReady(() => {
       const tooltipEl = container.querySelector('.scene-tooltip');
       if (tooltipEl) tooltipEl.style.display = 'none';
+      
+      // Move directional light to left after globe is ready
+      try {
+        const dirLight = globe.scene().children.find(obj => obj.type === 'DirectionalLight') || globe.camera().children.find(obj => obj.type === 'DirectionalLight');
+        if (dirLight) {
+          dirLight.position.set(-5, 0, 1);
+        }
+      } catch (e) {
+        console.error("Error setting light:", e);
+      }
     });
 
     // 3D Airplane
@@ -201,9 +117,8 @@
     airplane.visible = false;
     globe.scene().add(airplane);
 
-    // Start view: looking at HKG from a distance – matches video frame 0
-    // 适配 3.5 寸小屏幕：将高度大幅拉近至 0.9，并微调经纬度以保证香港正好在屏幕左侧偏中位置
-    globe.pointOfView({ lat: HKG_COORDS.lat, lng: HKG_COORDS.lng + 20, altitude: 0.9 });
+    // Start view: looking at Pacific Ocean with a terminator line
+    globe.pointOfView({ lat: 10, lng: 160, altitude: 0.58 });
     globe.controls().autoRotate      = true;
     globe.controls().autoRotateSpeed = 0.3;
     globe.controls().enableZoom      = false;
@@ -224,11 +139,11 @@
     flightCurve = createGreatCircleCurve(
       HKG_COORDS.lat, HKG_COORDS.lng,
       destCoords.lat, destCoords.lng,
-      0.14, 150
+      0.14, 50
     );
 
     // Dashed-style line via segments (white, semi-transparent)
-    const pts     = flightCurve.getPoints(150);
+    const pts     = flightCurve.getPoints(50);
     const lineGeom = new THREE.BufferGeometry().setFromPoints(pts);
     const lineMat  = new THREE.LineBasicMaterial({
       color: 0xffffff,
@@ -238,6 +153,9 @@
     });
     routeLine = new THREE.Line(lineGeom, lineMat);
     globe.scene().add(routeLine);
+
+    // Pre-calculate 200 animation points to avoid spline calculations on every frame
+    window.airplanePathPoints = flightCurve.getPoints(200);
 
     // Subtle endpoint rings
     globe.ringsData([
@@ -275,22 +193,16 @@
     globe.controls().autoRotate = false;
 
     const startTime = performance.now();
+    const points = window.airplanePathPoints || [];
+    const numPoints = points.length;
 
     function step() {
       const t = Math.min((performance.now() - startTime) / flightDurationMs, 1.0);
 
-      const pos     = flightCurve.getPoint(t);
-      const nextPos = flightCurve.getPoint(Math.min(t + 0.008, 1.0));
-
-      airplane.position.copy(pos);
-
-      // Orient toward direction of travel
-      const dir = nextPos.clone().sub(pos).normalize();
-      const up  = pos.clone().normalize();
-      const right = new THREE.Vector3().crossVectors(dir, up).normalize();
-      const correctedDir = new THREE.Vector3().crossVectors(up, right).normalize();
-      const matrix = new THREE.Matrix4().makeBasis(right, up, correctedDir.negate());
-      airplane.quaternion.setFromRotationMatrix(matrix);
+      if (numPoints > 0) {
+        const idx = Math.floor(t * (numPoints - 1));
+        airplane.position.copy(points[idx]);
+      }
 
       if (t < 1.0) {
         requestAnimationFrame(step);
@@ -304,51 +216,109 @@
 
   // ── Main Flight Sequence (matches video) ─────────────────────
   function startFlight(dest, onComplete) {
-    // 强制关闭自转，释放相机控制权以执行拉远/拉近动画
     globe.controls().autoRotate = false;
 
-    // dest = { lat, lng, name }
-    const destWithName = { ...dest };
+    const dirLight = globe.scene().children.find(obj => obj.type === 'DirectionalLight') || globe.camera().children.find(obj => obj.type === 'DirectionalLight');
+    if (dirLight) {
+      dirLight.position.set(0, 0, 1);
+    }
 
+    const destWithName = { ...dest };
     buildRoute(destWithName);
 
-    // Step 1: Zoom out to see full polar route (like frame_040)
-    // Compute mid-point above the great circle (approx polar)
-    const midLat = Math.max((HKG_COORDS.lat + dest.lat) / 2 + 20, 55);
-    let midLng   = (HKG_COORDS.lng + dest.lng) / 2;
-    if (Math.abs(HKG_COORDS.lng - dest.lng) > 180) {
-      midLng += 180;
-      if (midLng > 180) midLng -= 360;
-    }
-    globe.pointOfView({ lat: midLat, lng: midLng, altitude: 3.2 }, 2200);
+    const flightAlt = getAltitudeForRoute(dest.lat, dest.lng);
 
-    // Step 2: Start airplane after camera settles
+    // Step 1: Zoom out to show route overview
+    globe.pointOfView({ lat: dest.lat, lng: dest.lng, altitude: flightAlt + 0.6 }, 1800);
+
     setTimeout(() => {
-      animateAirplane(destWithName, 5500, () => {
-        // Step 3: Zoom in to destination (like frame_010 Toronto zoom)
-        globe.pointOfView({ lat: dest.lat, lng: dest.lng, altitude: 0.4 }, 1800);
+      // Step 2: Pan to HKG
+      globe.pointOfView({ lat: HKG_COORDS.lat, lng: HKG_COORDS.lng, altitude: flightAlt * 0.8 }, 2000);
 
-        setTimeout(() => {
-          // Step 4: Slowly pull back – earth slides to lower half, like frame_078
-          globe.pointOfView({ lat: dest.lat - 20, lng: dest.lng, altitude: 1.5 }, 2200);
+      setTimeout(() => {
+        // Step 3: Fly along route — camera follows airplane on the great circle
+        const flightDuration = 6000;
+        const startTime = performance.now();
+        const points = window.airplanePathPoints || [];
+
+        function trackFlight() {
+          const t = Math.min((performance.now() - startTime) / flightDuration, 1.0);
+          if (t < 1.0 && points.length > 0) {
+            const idx = Math.floor(t * (points.length - 1));
+            const pos = points[idx];
+            const lat = Math.asin(pos.y / pos.length()) * 180 / Math.PI;
+            const lng = Math.atan2(pos.x, pos.z) * 180 / Math.PI;
+            globe.pointOfView({ lat, lng, altitude: flightAlt }, 300);
+            requestAnimationFrame(trackFlight);
+          }
+        }
+        trackFlight();
+
+        animateAirplane(destWithName, flightDuration, () => {
+          // Step 4: Zoom into destination
+          globe.pointOfView({ lat: dest.lat, lng: dest.lng, altitude: 0.35 }, 1500);
 
           setTimeout(() => {
-            airplane.visible = false;
+            if (airplane) airplane.visible = false;
             if (onComplete) onComplete();
-          }, 2400);
-        }, 2200);
-      });
-    }, 2500);
+          }, 1600);
+        });
+      }, 2100);
+    }, 1900);
+  }
+
+  function shiftCameraToBottom(duration = 2000) {
+    if (!globe) return;
+    const camera = globe.camera();
+    
+    const startSkew = 0;
+    const targetSkew = 2.8;
+    const startTime = performance.now();
+    
+    function step() {
+      const t = Math.min((performance.now() - startTime) / duration, 1.0);
+      const easeT = t < 0.5 ? 2 * t * t : -1 + (4 - 2 * t) * t;
+      
+      window.currentCameraSkewY = startSkew + (targetSkew - startSkew) * easeT;
+      camera.updateProjectionMatrix();
+      
+      if (t < 1.0) {
+        requestAnimationFrame(step);
+      }
+    }
+    step();
   }
 
   // ── Public API ────────────────────────────────────────────────
   window.GlobeScene = {
     init,
     startFlight,
+    reset() {
+      if (!globe) return;
+      if (routeLine) {
+        globe.scene().remove(routeLine);
+        routeLine = null;
+      }
+      if (airplane) airplane.visible = false;
+      
+      globe.pointOfView({ lat: 10, lng: 160, altitude: 0.58 }, 0);
+      globe.controls().autoRotate = true;
+      
+      window.currentCameraSkewY = 0;
+      globe.camera().updateProjectionMatrix();
+      
+      try {
+        const dirLight = globe.scene().children.find(obj => obj.type === 'DirectionalLight') || globe.camera().children.find(obj => obj.type === 'DirectionalLight');
+        if (dirLight) {
+          dirLight.position.set(-5, 0, 1);
+        }
+      } catch (e) {}
+    },
     // Legacy stubs for app.js compatibility
     focusHKG()        { if (globe) globe.pointOfView({ lat: HKG_COORDS.lat, lng: HKG_COORDS.lng, altitude: 1.6 }, 1200); },
     panToYYZ()        { if (globe) globe.pointOfView({ lat: 43.65, lng: -79.38, altitude: 1.2 }, 1800); },
     zoomOutRoute()    { if (globe) globe.pointOfView({ lat: 60, lng: 20, altitude: 2.5 }, 1800); },
-    startAirplaneAnimation(cb) { animateAirplane({}, 5000, cb); }
+    startAirplaneAnimation(cb) { animateAirplane({}, 5000, cb); },
+    shiftCameraToBottom
   };
 })();

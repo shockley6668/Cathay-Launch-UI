@@ -79,9 +79,18 @@
   box-sizing: border-box;
 }
 
-html, body {
+html {
+  background: #000;
   width: 100%;
   height: 100%;
+}
+
+body {
+  width: 480px !important;
+  height: 320px !important;
+  position: absolute !important;
+  left: 0 !important;
+  top: 0 !important;
   overflow: hidden;
   background: var(--board-bg);
   font-family: 'Roboto Mono', 'Courier New', monospace;
@@ -326,7 +335,7 @@ html, body {
 .flap-top {
   top: 0;
   border-radius: var(--flap-radius) var(--flap-radius) 0 0;
-  align-items: flex-end;
+  align-items: flex-start;
   border-bottom: 1px solid var(--flap-divider);
   /* Subtle top highlight */
   background: linear-gradient(180deg, #242438 0%, var(--flap-bg) 100%);
@@ -335,7 +344,7 @@ html, body {
 .flap-bottom {
   bottom: 0;
   border-radius: 0 0 var(--flap-radius) var(--flap-radius);
-  align-items: flex-start;
+  align-items: flex-end;
   background: linear-gradient(180deg, var(--flap-bg-bottom) 0%, #141422 100%);
   /* Subtle bottom shadow */
   box-shadow: 0 2px 4px var(--flap-shadow);
@@ -388,13 +397,13 @@ html, body {
 /* Flip text styling (same as static) */
 .flap-flip-top .flap-text {
   position: absolute;
-  bottom: 0;
+  top: 0;
   width: 100%;
 }
 
 .flap-flip-bottom .flap-text {
   position: absolute;
-  top: 0;
+  bottom: 0;
   width: 100%;
 }
 
@@ -636,6 +645,7 @@ html, body {
 
 /* --- Sweep Transition --- */
 .sweep-transition {
+  display: none !important;
   position: absolute;
   top: 0;
   left: 0;
@@ -653,7 +663,9 @@ html, body {
 
 .sweep-brushwing {
   width: 120px;
+  max-width: 80px;
   height: auto;
+  overflow: hidden;
   filter: brightness(0) invert(1);
   opacity: 0.95;
   transform: scale(0.8) translateY(20px);
@@ -733,147 +745,256 @@ html, body {
   width: 100%;
   height: 100%;
   background-color: #05070f;
-  display: flex;
-  align-items: center;
-  justify-content: center;
   z-index: 100;
   transition: opacity 1.2s ease, visibility 1.2s ease;
+  overflow: hidden;
 }
 
-.start-content {
+.start-bg {
+  position: absolute;
+  top: 0;
+  left: 0;
+  width: 100%;
+  height: 100%;
+  background-size: cover;
+  background-position: center;
+  filter: brightness(0.6);
+  transform: scale(1.05);
+  animation: bg-pan 30s linear infinite alternate;
+}
+
+.start-overlay {
+  position: absolute;
+  top: 0;
+  left: 0;
+  width: 100%;
+  height: 100%;
+  background: radial-gradient(circle at center, rgba(0,0,0,0) 0%, rgba(0,0,0,0.5) 100%);
+}
+
+.lang-content {
+  position: absolute;
+  top: 50%;
+  left: 50%;
+  transform: translate(-50%, -50%);
   display: flex;
   flex-direction: column;
   align-items: center;
-  gap: 24px;
-  position: relative;
+  gap: 30px;
+  width: 90%;
+  max-width: 800px;
 }
 
-.start-logo {
-  width: 100px;
-  height: auto;
-  filter: brightness(0) invert(1) drop-shadow(0 0 15px rgba(255, 255, 255, 0.3));
-  animation: logo-pulse 4s ease-in-out infinite;
+.lang-title {
+  font-family: 'Inter', sans-serif;
+  font-size: 32px;
+  font-weight: 500;
+  color: #ffffff;
+  letter-spacing: 1px;
+  text-shadow: 0 2px 10px rgba(0,0,0,0.5);
+  margin: 0;
 }
 
-.start-text {
+.lang-list {
+  list-style: none;
+  padding: 0;
+  margin: 0;
+  display: flex;
+  flex-wrap: wrap;
+  justify-content: center;
+  gap: 20px;
+}
+
+.lang-list li {
   font-family: 'Noto Sans TC', 'PingFang TC', 'Inter', sans-serif;
-  font-size: clamp(10px, 2vw, 13px);
-  font-weight: 300;
-  letter-spacing: 4px;
-  color: rgba(255, 255, 255, 0.8);
-  animation: text-pulse 2s ease-in-out infinite;
-  text-shadow: 0 0 10px rgba(255, 255, 255, 0.4);
-}
-
-.start-pulse-ring {
-  position: absolute;
-  width: 100px;
-  height: 100px;
+  font-size: 14px;
+  font-weight: 500;
+  color: rgba(255, 255, 255, 0.85);
+  cursor: pointer;
+  padding: 10px 20px;
+  border-radius: 20px;
+  background: rgba(255, 255, 255, 0.05);
+  backdrop-filter: blur(5px);
+  -webkit-backdrop-filter: blur(5px);
+  transition: all 0.3s ease;
   border: 1px solid rgba(255, 255, 255, 0.1);
-  border-radius: 50%;
-  animation: pulse-ring 3s cubic-bezier(0.215, 0.61, 0.355, 1) infinite;
-  pointer-events: none;
+  text-shadow: 0 1px 4px rgba(0,0,0,0.4);
 }
 
-@keyframes logo-pulse {
-  0%, 100% {
-    transform: scale(1);
-    opacity: 0.9;
-  }
-  50% {
-    transform: scale(1.03);
-    opacity: 1;
-    filter: drop-shadow(0 0 25px rgba(255, 255, 255, 0.5));
-  }
+.lang-list li:hover {
+  background: rgba(255, 255, 255, 0.2);
+  color: #fff;
+  border-color: rgba(255, 255, 255, 0.4);
+  transform: translateY(-2px);
 }
 
-@keyframes text-pulse {
-  0%, 100% {
-    opacity: 0.5;
-  }
-  50% {
-    opacity: 1;
-  }
-}
-
-@keyframes pulse-ring {
-  0% {
-    transform: scale(0.6);
-    opacity: 0;
-  }
-  50% {
-    opacity: 0.5;
-  }
-  100% {
-    transform: scale(1.8);
-    opacity: 0;
-  }
+@keyframes bg-pan {
+  0% { transform: scale(1.05) translate(0, 0); }
+  100% { transform: scale(1.05) translate(-2%, 2%); }
 }
 
 /* ============================================================
-   Globe HUD Overlay
-   Matches video: earth occupies lower portion, text floats in black space above
+   SCENE 2: Globe Layer HUD (Pacific Ocean view with rolling text)
    ============================================================ */
 .globe-hud {
   position: absolute;
-  inset: 0;
-  z-index: 15;
+  top: 0;
+  left: 0;
+  width: 100%;
+  height: 100%;
   pointer-events: none;
+  z-index: 50;
   display: flex;
-  flex-direction: column;
   align-items: center;
   justify-content: center;
-  gap: 0;
   opacity: 0;
-  transition: opacity 1.2s ease;
+  transition: opacity 1.5s ease;
 }
 
 .globe-hud--visible {
   opacity: 1;
 }
 
-/* Brushwing logo – small, centered top-area */
-.globe-hud-logo {
-  flex: 0 0 auto;
-  margin-top: 15px;
-  display: flex;
-  justify-content: center;
-  opacity: 0;
-  transform: translateY(-10px);
-  transition: opacity 1s ease 0.5s, transform 1s ease 0.5s;
-}
-
-.globe-brushwing-svg {
-  width: 80px;
-  height: auto;
-  filter: brightness(0) invert(1) drop-shadow(0 0 10px rgba(255,255,255,0.2));
-  animation: hud-logo-float 5s ease-in-out infinite;
-}
-
-@keyframes hud-logo-float {
-  0%, 100% { transform: translateY(0);   opacity: 0.85; }
-  50%       { transform: translateY(-4px); opacity: 1;    }
-}
-
-/* "Enjoy your flight to" label */
-.globe-hud-center {
+.globe-hud-content {
   display: flex;
   flex-direction: column;
   align-items: center;
-  gap: 10px;
+  gap: 20px;
+}
+
+.globe-hud-content.cjk-mode {
+  gap: 8px;
+}
+
+.globe-hud-content.cjk-mode .globe-brushwing-svg {
+  width: 36px;
+}
+
+.globe-hud-logo {
+  animation: float-logo 4s ease-in-out infinite;
+}
+
+.globe-brushwing-svg {
+  width: 60px;
+  height: auto;
+  filter: brightness(0) invert(1) drop-shadow(0 4px 10px rgba(0,0,0,0.5));
+}
+
+@keyframes float-logo {
+  0%, 100% { transform: translateY(0); }
+  50% { transform: translateY(-8px); }
+}
+
+/* --- Rolling Text Container --- */
+.rolling-subtitle {
+  font-family: 'Inter', 'Noto Sans TC', sans-serif;
+  font-size: 14px;
+  font-weight: 400;
+  letter-spacing: 4px;
+  color: #a1a1aa;
+  font-style: italic;
+  opacity: 0;
+  transform: translateY(10px);
+  transition: opacity 0.8s ease, transform 0.8s ease;
+  margin-bottom: 4px;
+}
+
+.cjk-mode .rolling-subtitle {
+  font-style: normal;
+  letter-spacing: 2px;
+  font-size: 15px;
+  margin-bottom: 10px;
+}
+
+.rolling-text-container {
+  display: flex;
+  gap: 0;
+  justify-content: center;
+  align-items: center;
+  height: 60px;
+  overflow: hidden;
+  position: relative;
+}
+
+.rolling-text-cjk {
+  height: 60px;
+  gap: 2px;
+}
+
+.rolling-char-col {
+  position: relative;
+  width: 26px;
+  height: 100%;
+}
+
+.rolling-text-cjk .rolling-char-col {
+  width: 40px;
+}
+
+.rolling-char-inner {
+  position: absolute;
+  top: 0;
+  left: 0;
+  width: 100%;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+}
+
+.rolling-char {
+  font-family: 'Noto Sans TC', 'PingFang TC', 'Inter', sans-serif;
+  font-size: 38px;
+  font-weight: 400;
+  color: #ffffff;
+  height: 60px;
+  line-height: 60px;
+  text-align: center;
+  text-shadow: 0 2px 10px rgba(0,0,0,0.6);
+  letter-spacing: 0;
+  width: 26px;
+}
+
+.rolling-text-cjk .rolling-char {
+  width: 40px;
+  height: 60px;
+  line-height: 60px;
+  font-size: 42px;
+}
+
+.rolling-char.blur {
+  filter: blur(1.5px);
+}
+
+/* --- Final Destination Text --- */
+.final-text-container {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 15px;
+}
+
+.cjk-mode .final-text-container {
+  gap: 6px;
 }
 
 .globe-enjoy-label {
-  font-family: 'Noto Sans TC', 'PingFang TC', 'Inter', sans-serif;
-  font-size: clamp(12px, 2vw, 20px);
-  font-weight: 200;
-  letter-spacing: 5px;
-  color: rgba(255,255,255,0.72);
+  font-family: 'Inter', sans-serif;
+  font-size: 14px;
+  font-weight: 400;
+  letter-spacing: 4px;
+  color: #a1a1aa;
   text-transform: none;
+  font-style: italic;
   opacity: 0;
-  transform: translateY(6px);
-  animation: none;
-  transition: opacity 0.8s ease 0.2s, transform 0.8s ease 0.2s;
+  transform: translateY(10px);
+  transition: opacity 1s ease 0.2s, transform 1s ease 0.2s;
+}
+
+.cjk-mode .globe-enjoy-label {
+  font-family: 'Noto Sans TC', 'PingFang TC', sans-serif;
+  font-size: 13px;
+  letter-spacing: 2px;
+  font-style: italic;
 }
 
 .globe-hud--visible .globe-enjoy-label {
@@ -881,23 +1002,47 @@ html, body {
   transform: translateY(0);
 }
 
-/* Globe Destination Pure Text */
 .globe-dest-text {
-  font-family: 'Inter', sans-serif;
-  font-size: clamp(36px, 8vw, 80px);
+  font-family: 'Inter', 'Noto Sans TC', sans-serif;
+  font-size: 64px;
   font-weight: 700;
   color: #ffffff;
   letter-spacing: 2px;
   text-transform: uppercase;
-  text-shadow: 0 0 20px rgba(255,255,255,0.4);
+  text-shadow: 0 4px 15px rgba(0,0,0,0.5);
   opacity: 0;
-  transform: translateY(6px);
-  transition: opacity 0.8s ease 0.4s, transform 0.8s ease 0.4s;
+  transform: translateY(10px);
+  transition: opacity 1s ease 0.4s, transform 1s ease 0.4s;
+}
+
+.cjk-mode .globe-dest-text {
+  font-size: 44px;
+  letter-spacing: 6px;
+  text-transform: none;
 }
 
 .globe-hud--visible .globe-dest-text {
   opacity: 1;
   transform: translateY(0);
+}
+
+/* End Scene Layout Shift */
+.globe-hud.end-scene {
+  flex-direction: column;
+  justify-content: flex-start;
+  align-items: center;
+  padding-top: 30px; /* Use fixed pixels to avoid vh scaling issues on different browser viewports */
+}
+
+.dest-letter {
+  display: inline-block;
+  min-width: 0.6em; /* ensure spaces have width */
+  text-align: center;
+}
+
+.dest-letter.animating {
+  filter: blur(1px);
+  opacity: 0.8;
 }
 
 /* Fix globe.gl default tooltip showing as a white bar */
