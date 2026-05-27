@@ -1,5 +1,7 @@
 # Cathay Pacific IFE Boot Screen
 
+![Screenshot](page.png)
+
 A replica of the Cathay Pacific in-flight entertainment (IFE) boot screen, running on RDK X5 + 3.5" ST7796S SPI LCD (320×480 portrait).
 
 Pure HTML5 + CSS3 + Vanilla JS — **no build tools, no package manager**. Open `index.html` directly in a browser or serve locally with `python3 -m http.server`.

@@ -1,5 +1,7 @@
 # 国泰航空 IFE 开机引导屏
 
+![截图](page.png)
+
 国泰航空机上娱乐系统（IFE）开机引导屏的复刻版，跑在 RDK X5 + 3.5" ST7796S SPI 屏（320×480 竖屏）上。
 
 纯 HTML5 + CSS3 + Vanilla JS，**没有构建工具、没有包管理器**。本地直接 `python3 -m http.server` 看效果，板子上用 systemd 拉起 Firefox kiosk 全屏跑。
