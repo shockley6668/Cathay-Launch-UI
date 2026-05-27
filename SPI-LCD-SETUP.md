@@ -1,188 +1,190 @@
-# RDK X5 接 ST7796S SPI 屏 + GT911 触摸
+# RDK X5 — ST7796S SPI LCD + GT911 Touch Setup
 
-把一块 3.5 寸 ST7796S SPI LCD (480x320) 和 GT911 电容触摸接到 RDK X5 上，用内核 DRM 驱动跑起来。最终效果：开机显示桌面，触摸方向正确。
+Connect a 3.5" ST7796S SPI LCD (480x320) and GT911 capacitive touch panel to the RDK X5, driven by the kernel DRM driver. End result: desktop displayed on boot, touch orientation correct.
 
-## 为什么要折腾内核驱动
-
-之前我用用户态的 `x11-to-spi.c` 驱动这块屏，流程是这样的：
-
-```
-应用 → X11 → SHM 截帧 → BGRA转RGB565 → spidev ioctl(PIO) → ST7796S
-```
-
-这套方案能跑，但 FPS 只有 16 左右。瓶颈很明显：spidev 是 PIO 传输，CPU 阻塞等着；DC 引脚靠 sysfs GPIO 切换，每次 5us；还有各种 usleep 占着 CPU 不干活。加上 SHM 截帧和像素格式转换的额外拷贝，能跑 16 FPS 已经是极限了。
-
-换用内核的 `panel-mipi-dbi` DRM 驱动后：
-
-```
-应用 → X11 → modesetting → /dev/fb0 → panel-mipi-dbi → SPI DMA → ST7796S
-```
-
-X11 直接写内核 framebuffer，零拷贝；SPI 用 DMA 传，CPU 不阻塞；内核还会自动做脏矩形追踪，只传变化区域。FPS 直接翻倍到 30+，而且不需要 `x11-to-spi.c` 了。
-
-整套方案涉及两个内核模块：
-- `panel_mipi_dbi` + `drm_mipi_dbi` — 驱动 ST7796S LCD，创建 `/dev/fb0`
-- `goodix_ts` — 驱动 GT911 触摸，创建 `/dev/input/event1`（这个内核已经有了，不用编译）
-
-还有一点要注意：SPI LCD 走的是 card0，没有 GPU 渲染节点。所以 WebGL 只能用 Mesa swrast 软渲染。如果你需要硬件 WebGL，得接 HDMI 用 vs_drm（card1）。
+> **[中文版本](SPI-LCD-SETUP.zh.md)**
 
 ---
 
-## 接线
+## Why Bother with the Kernel Driver?
 
-### LCD 和触摸的引脚连接
-
-ST7796S 和 GT911 都接在 RDK X5 的 40-pin 排针上，对应关系如下：
+The old approach used `x11-to-spi.c` in userspace:
 
 ```
-ST7796S 引脚    RDK X5 引脚              说明
-─────────────────────────────────────────────────
-VCC             3.3V (pin 1 或 17)       3.3V 供电，不要用 5V
-GND             GND (pin 6/9/25/39)      接好地线
-SCL             Physical 23 (SPI1 SCLK)  SPI 时钟
-SDA/SDI         Physical 19 (SPI1 MOSI)  SPI 数据输入
-CS              Physical 26 (SPI1 CS1)   片选——注意是 CS1，不是 CS0
-DC/RS           Physical 15 (BCM 22)     数据/命令选择
-RST             Physical 13 (BCM 27)     复位
-LED/BL          Physical 12 (BCM 18)     背光控制
-
-GT911 引脚      RDK X5 引脚              说明
-─────────────────────────────────────────────────
-VCC             3.3V (pin 1 或 17)       3.3V 供电
-GND             GND (pin 6/9/25/39)      接好地线
-SDA             Physical 3 (I2C5 SDA)    I2C 数据
-SCL             Physical 5 (I2C5 SCL)    I2C 时钟
-INT             Physical 4 (BCM 4)       中断（下降沿触发）
-RST             Physical 1 (BCM 1)       复位
+App → X11 → SHM capture → BGRA→RGB565 → spidev ioctl(PIO) → ST7796S
 ```
 
-几个容易搞错的地方：
-- LCD 的 **CS 一定要接 pin 26（CS1）**，不是 pin 24（CS0），因为 CS0 上可能挂着 IMU 传感器
-- 两个设备都用 **3.3V** 供电，别用 5V
-- GT911 的 I2C 地址是 **0x5D**，在 RDK X5 上枚举到 `/dev/i2c-5`
+This worked but topped out at ~16 FPS. Bottlenecks: spidev PIO blocks the CPU, DC pin via sysfs GPIO, usleep overhead, SHM capture + pixel format conversion.
 
-### sysfs GPIO 编号
-
-RDK X5 用的 Hobort GPIO 编号，和 BCM 不一样。写设备树和 sysfs 操作时需要用到这些映射：
+With the kernel `panel-mipi-dbi` DRM driver:
 
 ```
-BCM 引脚    sysfs GPIO    设备树 phandle          设备树 offset
+App → X11 → modesetting → /dev/fb0 → panel-mipi-dbi → SPI DMA → ST7796S
+```
+
+X11 writes directly to the kernel framebuffer — zero copy. SPI uses DMA, no CPU blocking. Kernel handles dirty rectangle tracking, only sending changed regions. FPS doubles to 30+, and `x11-to-spi.c` is no longer needed.
+
+Two kernel modules involved:
+- `panel_mipi_dbi` + `drm_mipi_dbi` — drives ST7796S LCD, creates `/dev/fb0`
+- `goodix_ts` — drives GT911 touch, creates `/dev/input/event1` (already in kernel, no compilation needed)
+
+Note: SPI LCD exposes card0 without GPU rendering. WebGL falls back to Mesa swrast software rendering. For hardware WebGL, use HDMI (vs_drm on card1).
+
+---
+
+## Wiring
+
+### LCD and Touch Pin Connections
+
+```
+ST7796S Pin       RDK X5 Pin                    Description
+────────────────────────────────────────────────────────────────
+VCC               3.3V (pin 1 or 17)            3.3V supply, do NOT use 5V
+GND               GND (pin 6/9/25/39)           Common ground
+SCL               Physical 23 (SPI1 SCLK)        SPI clock
+SDA/SDI           Physical 19 (SPI1 MOSI)        SPI data input
+CS                Physical 26 (SPI1 CS1)         Chip select — CS1, NOT CS0
+DC/RS             Physical 15 (BCM 22)           Data/command select
+RST               Physical 13 (BCM 27)           Reset
+LED/BL            Physical 12 (BCM 18)           Backlight control
+
+GT911 Pin         RDK X5 Pin                    Description
+────────────────────────────────────────────────────────────────
+VCC               3.3V (pin 1 or 17)            3.3V supply
+GND               GND (pin 6/9/25/39)           Common ground
+SDA               Physical 3 (I2C5 SDA)          I2C data
+SCL               Physical 5 (I2C5 SCL)          I2C clock
+INT               Physical 4 (BCM 4)             Interrupt (falling edge)
+RST               Physical 1 (BCM 1)             Reset
+```
+
+Common pitfalls:
+- LCD **CS must connect to pin 26 (CS1)**, NOT pin 24 (CS0) — CS0 may have an IMU sensor
+- Both devices use **3.3V**, not 5V
+- GT911 I2C address is **0x5D**, enumerated on `/dev/i2c-5` on RDK X5
+
+### sysfs GPIO Mapping
+
+RDK X5 uses Hobot GPIO numbering, different from BCM. These mappings are needed for device tree and sysfs operations:
+
+```
+BCM Pin    sysfs GPIO    Device Tree phandle      DT offset
 ──────────────────────────────────────────────────────────────
-BCM 22      388           ls_gpio0_porta          pin 9
-BCM 27      379           ls_gpio0_porta          pin 0
-BCM 18      421           dsp_gpio_porta          pin 10
-BCM 4       420           dsp_gpio_porta          pin 9
-BCM 1       354           ls_gpio1_porta          pin 7
+BCM 22     388           ls_gpio0_porta           pin 9
+BCM 27     379           ls_gpio0_porta           pin 0
+BCM 18     421           dsp_gpio_porta           pin 10
+BCM 4      420           dsp_gpio_porta           pin 9
+BCM 1      354           ls_gpio1_porta           pin 7
 ```
 
 ---
 
-## 操作步骤
+## Step-by-Step
 
-### 1. 接线
+### 1. Wire It Up
 
-按上面的表接好线。特别注意 CS 接 pin 26、两个设备都用 3.3V、地线都接好。
+Follow the table above. Pay special attention to CS on pin 26, 3.3V for both devices, and proper grounding.
 
-### 2. 编译内核模块
+### 2. Build Kernel Modules
 
-RDK X5 内核 (6.1.83) 默认没有启用 `CONFIG_DRM_PANEL_MIPI_DBI`，需要编译两个模块：`panel_mipi_dbi.ko` 和 `drm_mipi_dbi.ko`。
+RDK X5 kernel (6.1.83) does not enable `CONFIG_DRM_PANEL_MIPI_DBI` by default. Two modules need building: `panel_mipi_dbi.ko` and `drm_mipi_dbi.ko`.
 
-好消息是，x5-rdk-gen 源码树里这些驱动的源文件、Kconfig、Makefile 都已经就位了，你只需要在 defconfig 里加一行然后编译就行。
+Good news: the x5-rdk-gen source tree already has the driver source, Kconfig, and Makefile — you just need to enable one config line and build.
 
-#### 获取源码树
+#### Get the Source Tree
 
-x5-rdk-gen 是 RDK X5 的完整内核构建系统：
+x5-rdk-gen is the RDK X5 kernel build system:
 
 ```bash
-# 安装 repo
+# Install repo
 mkdir -p ~/bin
 curl https://storage.googleapis.com/git-repo-downloads/repo > ~/bin/repo
 chmod a+x ~/bin/repo
 export PATH=~/bin:$PATH
 
-# 克隆（清华镜像加速）
+# Clone (Tsinghua mirror for speed)
 export REPO_URL='https://mirrors.tuna.tsinghua.edu.cn/git/git-repo/'
 cd ~
 repo init -u git@github.com:D-Robotics/x5-manifest.git -b main
 repo sync
 ```
 
-克隆完成后，关键目录长这样：
+Key directories:
 
 ```
 x5-rdk-gen/
-├── source/kernel/drivers/gpu/drm/tiny/panel-mipi-dbi.c   ← 驱动源码，已存在
-├── source/kernel/drivers/gpu/drm/drm_mipi_dbi.c          ← 辅助模块，已存在（含 ST7796S 复位时序补丁）
-├── source/kernel/arch/arm64/configs/                      ← defconfig 在这里
-├── mk_kernel.sh                                           ← 编译脚本
-└── mk_debs.sh                                             ← 打包脚本
+├── source/kernel/drivers/gpu/drm/tiny/panel-mipi-dbi.c   ← driver source, already present
+├── source/kernel/drivers/gpu/drm/drm_mipi_dbi.c          ← helper module with ST7796S reset timing patch
+├── source/kernel/arch/arm64/configs/                      ← defconfig location
+├── mk_kernel.sh                                           ← build script
+└── mk_debs.sh                                             ← packaging script
 ```
 
-源码树里已经有的东西：
-- `panel-mipi-dbi.c` — 397 行，从 Linux 主线引入的完整驱动
-- `drm_mipi_dbi.c` — 第 603 行的复位时序已改成 `usleep_range(10000, 15000)`，适配 ST7796S（默认的 20us 不够，ST7796S 复位需要 10ms）
-- Kconfig 里已有 `CONFIG_DRM_PANEL_MIPI_DBI` 条目
-- Makefile 里已有 `panel-mipi-dbi.o` 编译规则
+What's already in the source tree:
+- `panel-mipi-dbi.c` — 397 lines, ported from Linux mainline
+- `drm_mipi_dbi.c` — reset timing at line 603 patched to `usleep_range(10000, 15000)` (ST7796S needs 10ms, not 20us)
+- Kconfig has `CONFIG_DRM_PANEL_MIPI_DBI` entry
+- Makefile has `panel-mipi-dbi.o` build rule
 
-**唯一要做的就是**在 defconfig 里启用这个模块。
+**The only thing to do** is enable the module in defconfig.
 
-#### 启用模块配置
+#### Enable Module Config
 
-编辑 `arch/arm64/configs/hobot_x5_rdk_ubuntu_defconfig`，末尾加一行：
+Edit `arch/arm64/configs/hobot_x5_rdk_ubuntu_defconfig`, append:
 
 ```
 CONFIG_DRM_PANEL_MIPI_DBI=m
 ```
 
-或者用 menuconfig：
+Or via menuconfig:
 
 ```bash
 cd x5-rdk-gen
 ./mk_kernel.sh menuconfig
 # Device Drivers → Graphics support → Display panels → MIPI DBI compatible display panels
-# 按 M 设为模块，保存退出
+# Press M for module, save and exit
 ```
 
-#### 搭建编译环境
+#### Set Up Build Environment
 
-x5-rdk-gen 的交叉编译需要 Ubuntu 22.04。如果你跑的是其他版本（比如 WSL Ubuntu 26.04），用 Docker：
+x5-rdk-gen needs Ubuntu 22.04 for cross-compilation. If running a different version (e.g., WSL Ubuntu 26.04), use Docker:
 
 ```bash
-# 装 Docker
+# Install Docker
 sudo apt install docker.io
 sudo usermod -aG docker $USER
-# 重新登录 shell
+# Re-login shell
 
-# 起 22.04 容器，把源码挂进去
+# Start 22.04 container with source mounted
 docker run -it --name x5-build -v ~/x5-rdk-gen:/work ubuntu:22.04 bash
 
-# 容器里装依赖
+# Install dependencies inside container
 apt update && apt install -y \
   build-essential bc bison flex python3 \
   libncurses5-dev libssl-dev \
   device-tree-compiler u-boot-tools ccache wget git
 
-# 装 ARM 交叉编译工具链
+# Install ARM cross-compilation toolchain
 cd /opt
 wget http://archive.d-robotics.cc/toolchain/gcc-arm-11.2-2022.02-x86_64-aarch64-none-linux-gnu.tar.xz
 tar -xf gcc-arm-11.2-2022.02-x86_64-aarch64-none-linux-gnu.tar.xz
 
-# 验证
+# Verify
 /opt/gcc-arm-11.2-2022.02-x86_64-aarch64-none-linux-gnu/bin/aarch64-none-linux-gnu-gcc --version
 ```
 
-#### 编译
+#### Build
 
 ```bash
 cd /work
 ./mk_kernel.sh
 ```
 
-编译完成后，模块在：
+Output modules will be at:
 - `source/kernel/drivers/gpu/drm/tiny/panel_mipi_dbi.ko`
 - `source/kernel/drivers/gpu/drm/drm_mipi_dbi.ko`
 
-如果只想编单个模块（更快），可以：
+For faster single-module builds:
 
 ```bash
 cd /work/source/kernel
@@ -192,44 +194,44 @@ make ARCH=arm64 \
   modules
 ```
 
-验证一下模块对不对：
+Verify the modules:
 
 ```bash
-modinfo panel_mipi_dbi.ko | grep depends   # 应看到依赖 drm_mipi_dbi, drm, spi 等
-modinfo drm_mipi_dbi.ko | grep vermagic     # 应显示 6.1.83
+modinfo panel_mipi_dbi.ko | grep depends   # should show drm_mipi_dbi, drm, spi, etc.
+modinfo drm_mipi_dbi.ko | grep vermagic     # should show 6.1.83
 ```
 
-### 3. 生成 ST7796S 固件文件
+### 3. Generate ST7796S Firmware
 
-`panel-mipi-dbi` 驱动启动时会从 `/lib/firmware/panel-mipi-dbi-spi.bin` 加载初始化命令。这个 bin 文件的格式是：
+The `panel-mipi-dbi` driver loads init commands from `/lib/firmware/panel-mipi-dbi-spi.bin` at startup. The binary format:
 
 ```
-15 字节：magic "MIPI DBI\0\0\0\0\0\0\0"
- 1 字节：版本号 (0x01)
- N 字节：命令序列，每条 [cmd, 参数个数, param1, param2, ...]
-         延时用 NOP 表示：[0x00, 0x01, 延时ms]
+15 bytes: magic "MIPI DBI\0\0\0\0\0\0\0"
+ 1 byte:  version (0x01)
+ N bytes: command sequence, each [cmd, param_count, param1, param2, ...]
+          Delay via NOP: [0x00, 0x01, delay_ms]
 ```
 
-本仓库有生成脚本 `generate_st7796s_fw.py`，直接跑：
+This repo includes `generate_st7796s_fw.py` — just run it:
 
 ```bash
-python3 generate_st7796s_fw.py    # 生成 st7796s.bin (109 bytes)
+python3 generate_st7796s_fw.py    # generates st7796s.bin (109 bytes)
 ```
 
-然后传到板子上，**注意文件名必须和设备树 compatible 一致**（驱动会自动拼 `.bin` 后缀）：
+Then transfer to the board (file name must match the device tree compatible string):
 
 ```bash
 scp st7796s.bin sunrise@192.168.128.10:/tmp/
 ssh sunrise@192.168.128.10 "sudo cp /tmp/st7796s.bin /lib/firmware/panel-mipi-dbi-spi.bin"
 ```
 
-### 4. 设备树 Overlay
+### 4. Device Tree Overlay
 
-需要两个 overlay：一个给 LCD，一个给触摸屏。
+Two overlays needed: one for the LCD, one for the touch panel.
 
-#### ST7796S LCD overlay
+#### ST7796S LCD Overlay
 
-保存为 `overlay-st7796s.dts`：
+Save as `overlay-st7796s.dts`:
 
 ```dts
 /dts-v1/;
@@ -242,18 +244,18 @@ ssh sunrise@192.168.128.10 "sudo cp /tmp/st7796s.bin /lib/firmware/panel-mipi-db
             #address-cells = <1>;
             #size-cells = <0>;
 
-            /* 禁用 CS1 上的 spidev，避免冲突 */
+            /* Disable spidev on CS1 to avoid conflict */
             spidev@1 {
                 status = "disabled";
             };
 
             panel-mipi-dbi@1 {
                 compatible = "panel-mipi-dbi-spi";
-                reg = <1>;                         /* CS1，不是 CS0 */
+                reg = <1>;                         /* CS1, not CS0 */
                 spi-max-frequency = <40000000>;    /* 40MHz */
                 dc-gpios = <&ls_gpio0_porta 9 0>;  /* BCM 22 */
                 reset-gpios = <&ls_gpio0_porta 0 0>; /* BCM 27 */
-                write-only;                        /* ST7796S SPI 读取不可靠 */
+                write-only;                        /* ST7796S SPI reads unreliable */
 
                 width-mm = <85>;
                 height-mm = <53>;
@@ -275,14 +277,14 @@ ssh sunrise@192.168.128.10 "sudo cp /tmp/st7796s.bin /lib/firmware/panel-mipi-db
 };
 ```
 
-几个要注意的点：
-- `reg = <1>` 表示 CS1。CS0 上可能挂着 IMU，别抢
-- `write-only` 必须加。ST7796S 的 SPI 读取不可靠，不加的话驱动读 ID 失败会跳过整个初始化
-- `width-mm` / `height-mm` 和各种 porch 是 `of_get_drm_panel_display_mode()` 的校验必填项，虽然 ST7796S 是 write-only 设备没有同步信号，但驱动要检查这些字段
+Key points:
+- `reg = <1>` selects CS1. CS0 may be used by an IMU sensor — don't conflict
+- `write-only` is required. ST7796S SPI reads are unreliable; without it the driver will skip init after failing ID read
+- `width-mm` / `height-mm` and porch values are validation requirements for `of_get_drm_panel_display_mode()`, even though ST7796S is a write-only device without sync signals
 
-#### GT911 触摸 overlay
+#### GT911 Touch Overlay
 
-保存为 `overlay-gt911.dts`：
+Save as `overlay-gt911.dts`:
 
 ```dts
 /dts-v1/;
@@ -299,8 +301,8 @@ ssh sunrise@192.168.128.10 "sudo cp /tmp/st7796s.bin /lib/firmware/panel-mipi-db
                 compatible = "goodix,gt911";
                 reg = <0x5d>;
                 interrupt-parent = <&dsp_gpio_porta>;
-                interrupts = <9 2>;                  /* 下降沿触发 */
-                reset-gpios = <&ls_gpio1_porta 7 1>; /* 低电平有效 */
+                interrupts = <9 2>;                  /* falling edge */
+                reset-gpios = <&ls_gpio1_porta 7 1>; /* active low */
 
                 touchscreen-size-x = <320>;
                 touchscreen-size-y = <480>;
@@ -310,32 +312,32 @@ ssh sunrise@192.168.128.10 "sudo cp /tmp/st7796s.bin /lib/firmware/panel-mipi-db
 };
 ```
 
-**重要**：不要加 `touchscreen-inverted-x`、`touchscreen-inverted-y` 或 `touchscreen-swapped-x-y`！这些属性会让内核驱动交换/翻转坐标值，但 ABS_X/Y 的 min/max 范围仍然是竖屏值（X:0-319, Y:0-479）。交换后值超出范围，libinput 归一化会把坐标扭曲，越到边缘偏差越大。坐标变换放在 X11 层处理（后面第 7 步会说）。
+**Important**: Do NOT add `touchscreen-inverted-x`, `touchscreen-inverted-y`, or `touchscreen-swapped-x-y`. These swap/invert coordinates in the kernel driver, but the ABS_X/Y min/max range stays at portrait values (X:0-319, Y:0-479). After swapping, values fall outside range, and libinput normalization distorts coordinates — worse toward edges. Coordinate transform is handled at the X11 layer instead (step 7 below).
 
-#### 编译和部署 overlay
+#### Compile and Deploy Overlays
 
 ```bash
-# 主机上编译（需要 device-tree-compiler）
+# Build on host (requires device-tree-compiler)
 dtc -@ -I dts -O dtb overlay-st7796s.dts -o overlay-st7796s.dtbo
 dtc -@ -I dts -O dtb overlay-gt911.dts -o overlay-gt911.dtbo
 
-# 传到板子
+# Transfer to board
 scp overlay-st7796s.dtbo overlay-gt911.dtbo sunrise@192.168.128.10:/tmp/
 ssh sunrise@192.168.128.10 \
   "sudo cp /tmp/overlay-st7796s.dtbo /boot/overlays/ &&
    sudo cp /tmp/overlay-gt911.dtbo /boot/overlays/"
 ```
 
-然后在板子上的 `/boot/config.txt` 末尾加上：
+Then append to `/boot/config.txt` on the board:
 
 ```
 dtoverlay=overlay-st7796s
 dtoverlay=overlay-gt911
 ```
 
-### 5. 部署内核模块
+### 5. Deploy Kernel Modules
 
-把编译好的 `.ko` 传到板子上：
+Copy the compiled `.ko` files to the board:
 
 ```bash
 scp panel_mipi_dbi.ko drm_mipi_dbi.ko sunrise@192.168.128.10:/tmp/
@@ -346,22 +348,22 @@ ssh sunrise@192.168.128.10 \
    sudo depmod -a"
 ```
 
-模块会通过设备树 compatible 字符串在启动时自动加载。想手动加载也行：
+Modules load automatically at boot via device tree compatible string matching. Manual load also works:
 
 ```bash
 sudo modprobe drm_mipi_dbi
 sudo modprobe panel_mipi_dbi
 ```
 
-### 6. 背光 GPIO 服务
+### 6. Backlight GPIO Service
 
-ST7796S 背光由 GPIO 控制（BCM 18，sysfs 编号 421）。写个 systemd 服务让开机自动点亮：
+ST7796S backlight is controlled by GPIO (BCM 18, sysfs 421). Create a systemd service to enable it at boot:
 
 ```bash
 sudo nano /etc/systemd/system/st7796s-backlight.service
 ```
 
-写入：
+Content:
 
 ```ini
 [Unit]
@@ -378,13 +380,13 @@ ExecStop=/bin/sh -c 'echo 0 > /sys/class/gpio/gpio421/value'
 WantedBy=multi-user.target
 ```
 
-启用：`sudo systemctl enable st7796s-backlight.service`
+Enable: `sudo systemctl enable st7796s-backlight.service`
 
-### 7. X11 配置
+### 7. X11 Configuration
 
-#### 显示驱动
+#### Display Driver
 
-创建 `/etc/X11/xorg.conf.d/99-spi-lcd.conf`：
+Create `/etc/X11/xorg.conf.d/99-spi-lcd.conf`:
 
 ```
 Section "Device"
@@ -394,13 +396,13 @@ Section "Device"
 EndSection
 ```
 
-**一定要用 `modesetting`，不要用 `fbdev`。** fbdev 不支持 DRI，GLX 走软件渲染容易出错。modesetting 虽然也没有硬件 GPU，但 swrast 能正常工作。
+**Must use `modesetting`, NOT `fbdev`.** fbdev doesn't support DRI, causing GLX/software rendering errors. modesetting works with swrast even without GPU hardware.
 
-#### 触摸校准
+#### Touch Calibration
 
-GT911 报的是竖屏坐标（X: 0-319, Y: 0-479），但 LCD 显示是横屏 (480x320)。需要做 90° 旋转才能把竖屏触摸映射到横屏。
+GT911 reports portrait coordinates (X: 0-319, Y: 0-479), but the LCD displays in landscape (480x320). A 90° rotation maps portrait touch to landscape display.
 
-创建 `/etc/X11/xorg.conf.d/90-touchscreen.conf`：
+Create `/etc/X11/xorg.conf.d/90-touchscreen.conf`:
 
 ```
 Section "InputClass"
@@ -411,135 +413,106 @@ Section "InputClass"
 EndSection
 ```
 
-这个矩阵做的事是：
-- `screen_x = 1 - y_norm`（Y 翻转到 X，取反）
-- `screen_y = x_norm`（X 映射到 Y）
+What this matrix does:
+- `screen_x = 1 - y_norm` (Y flipped into X)
+- `screen_y = x_norm` (X mapped to Y)
 
-其中 `x_norm = raw_x / 319`，`y_norm = raw_y / 479`，libinput 会根据 ABS 范围归一化到 0-1。
+Where `x_norm = raw_x / 319`, `y_norm = raw_y / 479` — libinput normalizes to 0-1 based on ABS ranges.
 
-用配置文件的好处是**持久化**的，重启不会丢。如果用 `xinput set-prop` 命令设，重启后就没了。
+Using the config file makes this **persistent** across reboots. Setting via `xinput set-prop` only lasts the current session.
 
-#### 禁用冲突的 X11 配置
+#### Disable Conflicting X11 Config
 
-RDK X5 默认的一些 X11 配置可能冲突，禁用掉：
+RDK X5 default X11 config may conflict. Disable:
 
 ```bash
 sudo mv /etc/X11/xorg.conf.d/1-resolution.conf /etc/X11/xorg.conf.d/1-resolution.conf.disable
 sudo mv /etc/X11/xorg.conf.d/2-dr-accel.conf /etc/X11/xorg.conf.d/2-dr-accel.conf.bak
 ```
 
-### 8. 重启和验证
+### 8. Reboot and Verify
 
 ```bash
 sudo reboot
 ```
 
-重启后逐项检查：
+After reboot, check each item:
 
 ```bash
-# DRM panel 是否加载
+# DRM panel loaded?
 dmesg | grep -i "mipi.dbi\|panel-mipi"
-ls /dev/fb*                              # 应有 /dev/fb0
-cat /sys/class/graphics/fb0/name         # 应显示 panel-mipi-dbid
-cat /sys/class/graphics/fb0/modes        # 应显示 U:480x320p-0
+ls /dev/fb*                              # should show /dev/fb0
+cat /sys/class/graphics/fb0/name         # should show panel-mipi-dbid
+cat /sys/class/graphics/fb0/modes        # should show U:480x320p-0
 
-# 触摸驱动是否加载
+# Touch driver loaded?
 dmesg | grep -i "goodix"
 cat /proc/bus/input/devices | grep -A5 Goodix
 
-# DRM 设备
+# DRM devices
 ls /dev/dri/                              # card0 (panel-mipi-dbi), card1 (vs_drm), renderD128
 
-# 触摸校准是否生效
-DISPLAY=:0 xinput list-props 7 | grep "Calibration Matrix"   # 应显示 0 -1 1 1 0 0 0 0 1
+# Touch calibration active?
+DISPLAY=:0 xinput list-props 7 | grep "Calibration Matrix"   # should show 0 -1 1 1 0 0 0 0 1
 
-# framebuffer 测试
-cat /dev/urandom > /dev/fb0               # LCD 显示噪点
-dd if=/dev/zero of=/dev/fb0               # LCD 变黑
+# Framebuffer test
+cat /dev/urandom > /dev/fb0               # LCD shows noise
+dd if=/dev/zero of=/dev/fb0               # LCD goes black
 ```
 
-如果 X11 配置正确，重启后 LCD 上应该能看到桌面。
+If X11 config is correct, the desktop should appear on the LCD after reboot.
 
 ---
 
-## 遇到问题？
+## Troubleshooting
 
-### 屏幕不亮
+### Screen is Blank
 
-依次排查：
-1. 接线——特别是 CS（pin 26/CS1）、DC（pin 15）、RST（pin 13）
-2. 背光：`cat /sys/class/gpio/gpio421/value` 应为 1
-3. 固件文件：`ls -la /lib/firmware/panel-mipi-dbi-spi.bin`
-4. 模块加载：`lsmod | grep panel_mipi_dbi`
-5. DRM 连接器状态：`cat /sys/class/drm/card0/card0-SPI-1/status` 应显示 `connected`
+Check in order:
+1. Wiring — especially CS (pin 26/CS1), DC (pin 15), RST (pin 13)
+2. Backlight: `cat /sys/class/gpio/gpio421/value` should be 1
+3. Firmware file: `ls -la /lib/firmware/panel-mipi-dbi-spi.bin`
+4. Module loaded: `lsmod | grep panel_mipi_dbi`
+5. DRM connector status: `cat /sys/class/drm/card0/card0-SPI-1/status` should show `connected`
 
-### 触摸方向不对
+### Touch Orientation Wrong
 
-不要在设备树 overlay 里加 `touchscreen-inverted-x/y` 或 `touchscreen-swapped-x-y`。确认 `/etc/X11/xorg.conf.d/90-touchscreen.conf` 存在且内容正确，校准矩阵生效：`DISPLAY=:0 xinput list-props 7 | grep "Calibration Matrix"` 应显示自定义值而不是 identity。
+Do NOT add `touchscreen-inverted-x/y` or `touchscreen-swapped-x-y` in the device tree overlay. Verify `/etc/X11/xorg.conf.d/90-touchscreen.conf` exists and has correct content. Check calibration matrix is applied: `DISPLAY=:0 xinput list-props 7 | grep "Calibration Matrix"` should show custom values, not identity.
 
-### 触摸校准重启后丢失
+### Touch Calibration Lost After Reboot
 
-说明你用的是 `xinput set-prop` 手动设置的，这只在当前会话有效。必须写进 `90-touchscreen.conf` 才能持久化。
+You used `xinput set-prop` to set it manually — that only lasts the current session. Must be written into `90-touchscreen.conf` for persistence.
 
-### 显示花屏/乱码
+### Display Corruption / Glitchy Output
 
-1. 降低 SPI 时钟——overlay 里 `spi-max-frequency` 从 40000000 降到 32000000
-2. 确认 `drm_mipi_dbi.c` 的复位时序补丁已应用（10ms 而不是 20us）
-3. 确认固件 `.bin` 文件和 ST7796S 的初始化序列匹配
+1. Lower SPI clock — change `spi-max-frequency` from 40000000 to 32000000 in the overlay
+2. Verify the `drm_mipi_dbi.c` reset timing patch is applied (10ms rather than 20us)
+3. Verify the firmware `.bin` init sequence matches ST7796S
 
-### I2C 总线编号变了
+### I2C Bus Number Changed
 
-添加设备树 overlay 后可能改变 I2C 总线编号，部署后用 `i2cdetect -l` 和 `i2cdetect -y 5` 确认 GT911 是否在 bus 5 的 0x5D。
-
----
-
-## 仓库文件说明
-
-```
-generate_st7796s_fw.py      生成 ST7796S 初始化固件的脚本（参考用）
-st7796s.bin                 固件文件 (109 bytes)，部署时改名为 panel-mipi-dbi-spi.bin
-overlay-st7796s.dts         ST7796S LCD 设备树 overlay 源码
-overlay-st7796s.dtbo        编译好的 LCD overlay（直接用，不需要装 dtc）
-overlay-gt911.dts           GT911 触摸设备树 overlay 源码
-overlay-gt911.dtbo          编译好的触摸 overlay（直接用，不需要装 dtc）
-kernel-modules/             预编译的内核模块（内核 6.1.83）
-  panel-mipi-dbi.ko         DRM panel 驱动 (463K)
-  drm_mipi_dbi.ko           DRM MIPI DBI 辅助模块，含 ST7796S 复位时序补丁 (550K)
-```
-
-板子上的文件：
-
-```
-/boot/overlays/overlay-st7796s.dtbo          LCD overlay
-/boot/overlays/overlay-gt911.dtbo            触摸 overlay
-/lib/firmware/panel-mipi-dbi-spi.bin         ST7796S 初始化固件
-/lib/modules/6.1.83/extra/panel-mipi-dbi.ko  DRM panel 驱动模块
-/lib/modules/6.1.83/extra/drm_mipi_dbi.ko    DRM MIPI DBI 辅助模块
-/etc/X11/xorg.conf.d/99-spi-lcd.conf         X11 显示配置（modesetting + card0）
-/etc/X11/xorg.conf.d/90-touchscreen.conf     X11 触摸校准（持久化）
-/etc/systemd/system/st7796s-backlight.service 背光 GPIO 服务
-```
+Adding device tree overlays may change I2C bus numbering. After deployment, verify GT911 is on bus 5 at 0x5D with `i2cdetect -l` and `i2cdetect -y 5`.
 
 ---
 
-## 快速部署（全新 RDK X5）
+## Quick Deploy (Fresh RDK X5)
 
-仓库里已经有编译好的 `.ko`、`.dtbo` 和固件，内核版本 6.1.83，**不需要安装任何工具，也不需要编译**，克隆仓库后直接传到板子上就行。如果你的板子内核版本不是 6.1.83，`.ko` 需要按第 2 步重新编译，`.dtbo` 和固件直接用。
+This repo includes pre-compiled `.ko` modules, `.dtbo` overlays, and firmware for kernel 6.1.83 — **no tools or compilation needed**. Just clone and copy to the board.
 
-板子 IP 192.168.128.10，密码 sunrise，按顺序执行：
+Board IP 192.168.128.10, password sunrise. Run in order:
 
 ```bash
-# overlay
+# Overlays
 scp overlay-st7796s.dtbo overlay-gt911.dtbo sunrise@192.168.128.10:/tmp/
 ssh sunrise@192.168.128.10 \
   "sudo cp /tmp/*.dtbo /boot/overlays/ &&
    grep -q overlay-st7796s /boot/config.txt || printf 'dtoverlay=overlay-st7796s\ndtoverlay=overlay-gt911\n' | sudo tee -a /boot/config.txt"
 
-# 固件
+# Firmware
 scp st7796s.bin sunrise@192.168.128.10:/tmp/
 ssh sunrise@192.168.128.10 "sudo cp /tmp/st7796s.bin /lib/firmware/panel-mipi-dbi-spi.bin"
 
-# 内核模块
+# Kernel modules
 scp kernel-modules/panel-mipi-dbi.ko kernel-modules/drm_mipi_dbi.ko sunrise@192.168.128.10:/tmp/
 ssh sunrise@192.168.128.10 \
   "sudo mkdir -p /lib/modules/6.1.83/extra &&
@@ -547,7 +520,7 @@ ssh sunrise@192.168.128.10 \
    sudo cp /tmp/drm_mipi_dbi.ko /lib/modules/6.1.83/extra/ &&
    sudo depmod -a"
 
-# X11 显示配置
+# X11 display config
 ssh sunrise@192.168.128.10 "sudo tee /etc/X11/xorg.conf.d/99-spi-lcd.conf << 'EOF'
 Section \"Device\"
     Identifier \"SPI LCD\"
@@ -556,7 +529,7 @@ Section \"Device\"
 EndSection
 EOF"
 
-# X11 触摸校准
+# X11 touch calibration
 ssh sunrise@192.168.128.10 "sudo tee /etc/X11/xorg.conf.d/90-touchscreen.conf << 'EOF'
 Section \"InputClass\"
     Identifier \"Goodix TouchScreen Calibration\"
@@ -566,7 +539,7 @@ Section \"InputClass\"
 EndSection
 EOF"
 
-# 背光服务
+# Backlight service
 ssh sunrise@192.168.128.10 "sudo tee /etc/systemd/system/st7796s-backlight.service << 'EOF'
 [Unit]
 Description=ST7796S LCD Backlight
@@ -584,13 +557,13 @@ EOF"
 
 ssh sunrise@192.168.128.10 "sudo systemctl enable st7796s-backlight.service"
 
-# 禁用旧的 x11-to-spi（如果存在）
+# Disable old x11-to-spi (if present)
 ssh sunrise@192.168.128.10 "sudo systemctl disable x11-to-spi 2>/dev/null; sudo systemctl stop x11-to-spi 2>/dev/null"
 
-# 重启
+# Reboot
 ssh sunrise@192.168.128.10 "sudo reboot"
 
-# 重启后验证
+# Post-reboot verification
 ssh sunrise@192.168.128.10 \
   "ls /dev/fb* &&
    cat /sys/class/graphics/fb0/name &&
@@ -599,12 +572,41 @@ ssh sunrise@192.168.128.10 \
 
 ---
 
-## 参考资料
+## Repository Files
 
-- [panel-mipi-dbi 驱动源码](https://github.com/torvalds/linux/blob/master/drivers/gpu/drm/tiny/panel-mipi-dbi.c)
-- [drm_mipi_dbi 辅助模块源码](https://github.com/torvalds/linux/blob/master/drivers/gpu/drm/drm_mipi_dbi.c)
-- [GT911 触摸驱动源码](https://github.com/torvalds/linux/blob/master/drivers/input/touchscreen/goodix.c)
-- [RDK X5 内核源码 (x5-manifest)](https://github.com/D-Robotics/x5-manifest)
-- [RDK X5 交叉编译工具链](http://archive.d-robotics.cc/toolchain/) — gcc-arm-11.2-2022.02
-- [libinput Calibration Matrix 文档](https://xorg-docs.archlinux.org/libinput.4.html)
-- [Linux Kernel DRM KMS 文档](https://www.kernel.org/doc/html/latest/gpu/drm-kms.html)
+```
+generate_st7796s_fw.py      ST7796S firmware generation script
+st7796s.bin                 Firmware binary (109 bytes), rename to panel-mipi-dbi-spi.bin
+overlay-st7796s.dts         ST7796S LCD device tree overlay source
+overlay-st7796s.dtbo        Pre-compiled LCD overlay
+overlay-gt911.dts           GT911 touch device tree overlay source
+overlay-gt911.dtbo          Pre-compiled touch overlay
+kernel-modules/             Pre-built kernel modules (kernel 6.1.83)
+  panel-mipi-dbi.ko         DRM panel driver (463K)
+  drm_mipi_dbi.ko           DRM MIPI DBI helper with ST7796S reset timing fix (550K)
+```
+
+Board file locations:
+
+```
+/boot/overlays/overlay-st7796s.dtbo          LCD overlay
+/boot/overlays/overlay-gt911.dtbo            Touch overlay
+/lib/firmware/panel-mipi-dbi-spi.bin         ST7796S init firmware
+/lib/modules/6.1.83/extra/panel-mipi-dbi.ko  DRM panel driver
+/lib/modules/6.1.83/extra/drm_mipi_dbi.ko    MIPI DBI helper
+/etc/X11/xorg.conf.d/99-spi-lcd.conf         X11 display config (modesetting + card0)
+/etc/X11/xorg.conf.d/90-touchscreen.conf     X11 touch calibration (persistent)
+/etc/systemd/system/st7796s-backlight.service Backlight GPIO service
+```
+
+---
+
+## References
+
+- [panel-mipi-dbi driver source](https://github.com/torvalds/linux/blob/master/drivers/gpu/drm/tiny/panel-mipi-dbi.c)
+- [drm_mipi_dbi helper source](https://github.com/torvalds/linux/blob/master/drivers/gpu/drm/drm_mipi_dbi.c)
+- [GT911 touch driver source](https://github.com/torvalds/linux/blob/master/drivers/input/touchscreen/goodix.c)
+- [RDK X5 kernel source (x5-manifest)](https://github.com/D-Robotics/x5-manifest)
+- [RDK X5 cross-compilation toolchain](http://archive.d-robotics.cc/toolchain/) — gcc-arm-11.2-2022.02
+- [libinput Calibration Matrix docs](https://xorg-docs.archlinux.org/libinput.4.html)
+- [Linux Kernel DRM KMS docs](https://www.kernel.org/doc/html/latest/gpu/drm-kms.html)

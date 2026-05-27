@@ -27,7 +27,7 @@
 | 显示驱动 | 内核 panel-mipi-dbi DRM, fb0 直接写 |
 | 浏览器 | Firefox kiosk 模式 |
 
-接屏 + 驱动安装的完整步骤见 **[SPI-LCD-SETUP.md](SPI-LCD-SETUP.md)**。
+接屏 + 驱动安装的完整步骤见 **[SPI-LCD-SETUP.zh.md](SPI-LCD-SETUP.zh.md)**。
 
 ---
 
