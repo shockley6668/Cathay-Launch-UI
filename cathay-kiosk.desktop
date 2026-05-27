@@ -5,6 +5,6 @@ Type=Application
 Terminal=false
 Exec=/home/sunrise/cathay_ui/autostart-kiosk.sh
 Name=Cathay Pacific IFE Kiosk
-Comment=Launch Chromium Kiosk and start local web server
+Comment=Legacy — use 'sudo systemctl start cathay-kiosk' instead
 X-GNOME-Autostart-enabled=true
 StartupNotify=false

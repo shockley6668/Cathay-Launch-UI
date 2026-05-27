@@ -31,3 +31,9 @@ Thumbs.db
 # IDEs & Editor
 .claude/
 .claude
+.vscode/
+
+# Temp packaging artifacts
+*.tar
+*.zip
+js/_reference-*.html

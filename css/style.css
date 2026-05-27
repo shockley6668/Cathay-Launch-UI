@@ -1004,11 +1004,11 @@ body {
 
 .globe-dest-text {
   font-family: 'Inter', 'Noto Sans TC', sans-serif;
-  font-size: 64px;
-  font-weight: 700;
+  font-size: 48px;
+  font-weight: 300;
   color: #ffffff;
-  letter-spacing: 2px;
-  text-transform: uppercase;
+  letter-spacing: 4px;
+  text-transform: none;
   text-shadow: 0 4px 15px rgba(0,0,0,0.5);
   opacity: 0;
   transform: translateY(10px);

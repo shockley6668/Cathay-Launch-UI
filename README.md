@@ -1,176 +1,166 @@
-# Cathay Pacific IFE Launch UI (国泰航空机上娱乐系统开机界面复刻)
+# Cathay Pacific IFE Boot Screen
 
-高保真复刻**国泰航空 (Cathay Pacific)** 机上娱乐系统 (IFE) 开机动画与交互界面。专为低功耗嵌入式设备（RDK X5 + 3.5" ST7796S 屏幕 320x480）深度优化。
+国泰航空机上娱乐系统（IFE）开机引导屏的复刻版，跑在 RDK X5 + 3.5" ST7796S SPI 屏（320×480 竖屏）上。
 
-## Features
+纯 HTML5 + CSS3 + Vanilla JS，**没有构建工具、没有包管理器**。本地直接 `python3 -m http.server` 看效果，板子上用 systemd 拉起 Firefox kiosk 全屏跑。
 
-- **3D 地球航线动画** — Globe.gl + Three.js，大圆航线生成，2D 飞机精灵沿航线飞行
-- **多语言支持** — 英/繁中/简中/日/韩/法/德，老虎机滚动文字根据语言切换字符池
-- **CJK 视觉适配** — 中文模式下自动调整列宽、字号、Logo 大小、间距
-- **距离自适应缩放** — 短/中/长航线自动调整飞行高度（0.25/0.45/0.7）
-- **航线跟随相机** — 飞行中相机沿大圆航线实时追踪飞机位置
-- **到达画面地球下沉** — 垂直 skew 变换将地球推至屏幕下方 35%
-- **客舱音乐** — 通过 `<audio>` 标签播放，精准卡点 1:58
+## 视觉
 
-## Tech Stack
+- 启动屏：星空 + 7 国语言菜单（English / 繁中 / 簡中 / 日 / 韩 / 法 / 德）
+- 翻牌登机口（split-flap）显示航班信息
+- 3D 地球（Three.js + globe.gl），程序化建模的低多边形飞机沿大圆航线飞行
+- 昼夜效果：地球白天/夜晚纹理混合 shader（来自 globe.gl 官方示例），太阳固定在香港正午、夏至
+- 31 条真实国泰航点，按概率挑选（中国境内航点出现率被压低）
 
-- Vanilla JavaScript (ES6), CSS3 3D Transforms
-- [Three.js](https://threejs.org/) v0.158 + [Globe.gl](https://globe.gl/) v2.32.2
-- Google Fonts: Inter, Roboto Mono, Noto Sans TC
+---
 
-## Quick Start
+## 硬件目标
+
+| 项目 | 值 |
+|---|---|
+| 板子 | RDK X5 (ARM64, 内核 6.1.83) |
+| 屏 | 3.5" ST7796S SPI LCD, 480×320, 横屏 |
+| 触摸 | GT911 I2C 电容触摸 |
+| 显示驱动 | 内核 panel-mipi-dbi DRM, fb0 直接写 |
+| 浏览器 | Firefox kiosk 模式 |
+
+接屏 + 驱动安装的完整步骤见 **[SPI-LCD-SETUP.md](SPI-LCD-SETUP.md)**。
+
+---
+
+## 仓库文件结构
+
+### 主项目（前端）
+
+```
+index.html                  入口页面
+css/style.css               所有样式
+js/
+  app.js                    IFEApplication 状态机（4 状态：开机屏 → 地球 → 揭示目的地 → 抵达）
+  globe-scene.js            Globe.gl 场景搭建、3D 飞机模型、相机轨迹
+  destinations.js           31 条 HKG 出发的真实航点数据（中英繁简多语言名）
+  split-flap.js             翻牌登机口动画（CSS 3D rotateX）
+  day-night.js              昼夜混合 shader（globe.gl 官方示例的复刻）
+assets/                     地球纹理、星空、飞机贴图等静态资源
+  earth_daymap_8k.jpg
+  earth_nightmap_8k.jpg
+  earth_lights_2048.png     城市灯光（保留备用）
+  earth_atmos_2048.jpg      备用低分辨率底图
+  plane.png                 旧版 2D 飞机贴图（已不用，留作参考）
+frames/                     参考视频抽出的 JPEG 截图，用作视觉对照
+```
+
+### RDK X5 SPI 屏部署
+
+```
+SPI-LCD-SETUP.md            完整接屏 + 内核驱动 + X11 + 触摸校准教程
+generate_st7796s_fw.py      生成 ST7796S 初始化固件的 Python 脚本
+st7796s.bin                 109 字节固件文件（部署时改名为 panel-mipi-dbi-spi.bin）
+overlay-st7796s.dts         LCD 设备树 overlay 源码
+overlay-st7796s.dtbo        LCD 设备树 overlay 编译产物（直接用，不需要装 dtc）
+overlay-gt911.dts           触摸设备树 overlay 源码
+overlay-gt911.dtbo          触摸设备树 overlay 编译产物
+kernel-modules/             预编译的内核模块（kernel 6.1.83）
+  panel-mipi-dbi.ko         DRM panel 驱动 (463K)
+  drm_mipi_dbi.ko           DRM MIPI DBI 辅助模块，含 ST7796S 复位时序补丁 (550K)
+```
+
+### 应用部署 / 开机自启
+
+```
+autostart-kiosk.sh          启动脚本：拉起 Firefox kiosk 指向 localhost:8000
+cathay-kiosk.desktop        XDG autostart 入口
+Makefile                    简单的 deploy 命令封装
+```
+
+### 文档
+
+```
+README.md                   你正在看
+CLAUDE.md                   给 Claude Code 的项目说明（架构、状态机、部署细节）
+SPI-LCD-SETUP.md            SPI 屏完整设置教程
+SESSION_CHANGELOG.md        早期开发日志
+```
+
+### 旧版本 / 历史遗留
+
+```
+archive/                    旧用户态 SPI 方案、调试脚本、被替代的 Python 直接驱动
+  README.md                 archive 里每个文件原本是干嘛用的、为什么不再用
+```
+
+---
+
+## 本地运行
+
+零依赖，浏览器直接打开就行：
 
 ```bash
 python3 -m http.server 8000
-# Open http://localhost:8000
+# 浏览器访问 http://localhost:8000/index.html
 ```
 
-## Directory Structure
+或者直接双击 `index.html`。
 
-```
-├── index.html              # Main entry
-├── css/style.css           # All styles + CJK overrides
-├── js/
-│   ├── app.js              # State machine, localization, rolling text
-│   ├── globe-scene.js      # Globe.gl, flight animation, camera tracking
-│   ├── split-flap.js       # Split-flap board (not used in current flow)
-│   └── destinations.js     # 31 HKG routes with zh-TW/zh-CN names
-├── assets/
-│   ├── plane.png           # 2D airplane sprite
-│   ├── earth_atmos_2048.jpg
-│   ├── cathay-logo.svg
-│   └── mountain_road.png
-└── SESSION_CHANGELOG.md    # Detailed session change log
-```
+---
 
-## State Machine
+## 部署到 RDK X5
 
-```
-START_SCREEN → GLOBE_SCENE → DEST_REVEAL → GLOBE_ARRIVE → (reset to START, next flight)
-```
-
-## RDK Deployment
+板子 IP `192.168.128.10`，密码 `sunrise`，应用路径 `/home/sunrise/cathay_ui/`。
 
 ```bash
-# Sync code
-sshpass -p 'sunrise' rsync -az --exclude='.git' --exclude='node_modules' \
-  --exclude='*.mp4' --exclude='frames' --exclude='venv' --exclude='.claude' \
-  . sunrise@192.168.128.10:/home/sunrise/cathay_ui/
-
-# Restart kiosk
-sshpass -p 'sunrise' ssh -o ControlPath=none sunrise@192.168.128.10 \
-  "killall firefox; sleep 1; DISPLAY=:0 firefox --kiosk http://localhost:8000/index.html &"
+sshpass -p 'sunrise' rsync -az \
+  --exclude='.git' --exclude='node_modules' --exclude='*.mp4' \
+  --exclude='frames' --exclude='venv' --exclude='.claude' \
+  --exclude='archive' \
+  ./ sunrise@192.168.128.10:/home/sunrise/cathay_ui/
 ```
 
-## SPI 显示屏驱动说明（Waveshare 3.5" ST7796S）
-
-### 硬件规格
-
-| 参数 | 值 |
-|------|-----|
-| 控制芯片 | Sitronix ST7796S |
-| 分辨率 | 320 × 480（竖屏物理），横屏软件旋转为 480 × 320 |
-| 接口 | SPI（4线制：MOSI、SCLK、CS、DC） + RST + BL |
-| 触摸控制器 | Goodix GT911（I2C，总线 5，地址 0x5D） |
-
-### GPIO 引脚映射（RDK X5）
-
-| 功能 | BCM 编号 | sysfs GPIO | 物理引脚 |
-|------|----------|------------|----------|
-| DC（数据/命令选择） | GPIO 22 | 388 | Pin 15 |
-| RST（复位） | GPIO 27 | 379 | Pin 13 |
-| BL（背光） | GPIO 18 | 421 | Pin 12 |
-| SPI 设备 | — | `/dev/spidev1.1` | — |
-| 触摸 INT | GPIO 4 | — | Pin 7 |
-| 触摸 RST | GPIO 17 | — | Pin 11 |
-| 触摸 I2C | — | `/dev/i2c-5` | — |
-
-### SPI 镜像服务（x11-to-spi）
-
-项目核心驱动为 [`x11-to-spi.c`](x11-to-spi.c)，一个用 C 编写的 X11 屏幕镜像服务，将 X11 桌面实时捕获并推送到 ST7796S。
-
-**工作原理：**
-1. 通过 **MIT-SHM 扩展**（`XShmGetImage`）从 X11 零拷贝捕获帧，避免 CPU 内存拷贝瓶颈
-2. SIMD 优化的 **BGRA → RGB565** 像素格式转换（逐行处理，cache 友好）
-3. **静态帧跳过**：逐像素对比当前帧与上一帧，画面未变化时不向 SPI 发送任何数据
-4. 全屏 SPI 写入时利用 ST7796S **GRAM 自动环绕（Auto-Wrap）** 特性：初始化时执行一次 `set_windows(0,0,479,319)` + `0x2C`，此后只调用 `write_data_buf()`，**不再发送任何命令**，从而彻底消除 DC 引脚跳变时序问题
-
-> **关键稳定性说明：** ST7796S 对 DC 引脚（数据/命令选择）的建立时间极为敏感。在 Linux sysfs GPIO 控制下，如果在 `ioctl` SPI 传输完成后立刻改变 DC 电平，底层硬件 FIFO 可能尚未完全清空，导致屏幕错把像素数据当成控制指令执行，表现为"触摸即灰屏"。解决方案是在每次 DC 翻转前后各加 `usleep(5~10)`，以及在大批量数据传输后加 `usleep(1000)` 等待 FIFO 排空。
-
-**编译与部署：**
+板子上 systemd 服务 `cathay-http.service`（HTTP server）+ `cathay-kiosk.service`（Firefox kiosk）已经配好，刷新代码后：
 
 ```bash
-# 在 RDK X5 板子上编译
-cd /home/sunrise/cathay_ui
-make
-
-# 注册为 systemd 服务（开机自启）
-sudo cp x11-to-spi.service /etc/systemd/system/
-sudo systemctl daemon-reload
-sudo systemctl enable x11-to-spi
-sudo systemctl start x11-to-spi
-
-# 查看日志（含 FPS 统计）
-sudo journalctl -u x11-to-spi -f
+sshpass -p 'sunrise' ssh sunrise@192.168.128.10 "sudo systemctl restart cathay-kiosk"
 ```
 
-**SPI 内核参数调优：**
+---
 
-```bash
-# 增大 spidev 内核缓冲区至 512KB（默认 4KB 会导致大帧被截断）
-echo 'options spidev bufsiz=524288' | sudo tee /etc/modprobe.d/spidev.conf
-sudo depmod -a
-sudo reboot
-```
+## 架构速览
 
-**LCD 初始化关键参数（`lcd_init()` 中）：**
-
-```c
-write_command(0x36);   // MADCTL：内存访问控制
-write_data(0xE8);      // MY=1 MX=1 MV=1（横屏旋转）BGR=1
-write_command(0x3A);   // 像素格式
-write_data(0x05);      // 16bpp RGB565
-```
-
-### 无 HDMI 时的 GPU 加速保持
-
-不接 HDMI 时，X11 会关闭 GPU（Glamor）加速，降级到 CPU 软件渲染，WebGL 地球极卡。
-
-**修复方案：** 在 `/etc/X11/xorg.conf.d/99-cathay-display.conf` 中强制启用 Glamor，并声明 480×320 虚拟分辨率：
+`js/app.js` 的 `IFEApplication` 是个 4 状态机：
 
 ```
-Section "Device"
-    Identifier "Device0"
-    Driver     "modesetting"
-    Option     "AccelMethod" "glamor"
-EndSection
-
-Section "Screen"
-    Identifier "Screen0"
-    Device "Device0"
-    DefaultDepth 24
-    SubSection "Display"
-        Depth 24
-        Virtual 480 320
-    EndSubSection
-EndSection
+START_SCREEN → GLOBE_SCENE → DEST_REVEAL → GLOBE_ARRIVE
+                ↑                                    |
+                └────────────────────────────────────┘
+                          （自动循环下一航班，31 选 1 概率加权）
 ```
 
-### 触摸重定向服务（touch-redirector）
+各 JS 模块通过 `window` 全局通信：
+- `window.ifeApp` — 状态机入口
+- `window.GlobeScene` — 地球场景（init / startFlight / reset）
+- `window.SplitFlapBoard` — 翻牌动画
+- `window.installDayNightCycle` — 昼夜 shader 安装
 
-[`touch_redirector.py`](touch_redirector.py) 通过 I2C 读取 GT911 触摸坐标，并用 `xdotool` 注入到 X11 桌面，实现 SPI 触摸屏控制 Firefox 的交互。
+详细架构（CJK 字体切换、航线高度计算、相机跟拍、设备树 overlay 等）见 [CLAUDE.md](CLAUDE.md)。
 
-```bash
-sudo systemctl enable touch-redirector
-sudo systemctl start touch-redirector
-```
+---
 
-## Key Architecture Details
+## 多语言
 
-- **Language detection**: `getDestName(flight)` returns `destinationNameCn` (繁中) / `destinationNameCnS` (简中) / `destinationName` (en)
-- **CJK class toggle**: `.rolling-text-cjk` on rolling container, `.cjk-mode` on `.globe-hud-content`
-- **Flight altitude**: `getAltitudeForRoute()` uses haversine distance → 0.25 / 0.45 / 0.7
-- **Camera tracking**: Per-frame `globe.pointOfView({lat, lng, alt}, 300)` follows airplane 3D position converted to lat/lng
-- **Earth skew**: `camera.projectionMatrix.elements[9]` override, targetSkew=2.8
+启动屏选什么语言会决定后续显示：
 
-See `CLAUDE.md` for full architecture docs and `SESSION_CHANGELOG.md` for detailed change log.
+| 选择 | 目的地名称字段 | 出发地（香港） |
+|---|---|---|
+| English | `destinationName` | "Hong Kong" |
+| 繁體中文 | `destinationNameCn` | "香港" |
+| 簡體中文 | `destinationNameCnS` | "香港" |
+| 日本語 / 한국어 | `destinationNameCn`（汉字与繁中通用） | "香港" |
+| Français / Deutsch | `destinationName`（英文回退） | "Hong Kong" |
+
+---
+
+## 参考
+
+- [globe.gl day-night-cycle 示例](https://globe.gl/example/day-night-cycle/) — 昼夜 shader 直接复刻
+- [Three.js](https://threejs.org/)
+- [panel-mipi-dbi 驱动源码](https://github.com/torvalds/linux/blob/master/drivers/gpu/drm/tiny/panel-mipi-dbi.c)

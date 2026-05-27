@@ -45,6 +45,15 @@ class IFEApplication {
       [this.flights[i], this.flights[j]] = [this.flights[j], this.flights[i]];
     }
 
+    // 降低中国境内航点（除港台外）的出现概率：随机丢弃 70% 的中国航点
+    const CN_AIRPORTS = new Set(['PEK', 'PVG', 'CAN', 'CTU', 'XMN', 'WUH']);
+    this.flights = this.flights.filter(f => {
+      if (CN_AIRPORTS.has(f.destination)) {
+        return Math.random() < 0.3; // 只保留 30%
+      }
+      return true;
+    });
+
     // Globe HUD flap display removed
 
     this.init();
@@ -59,7 +68,7 @@ class IFEApplication {
       const handler = () => {
         const langMap = {
           'English': 'en', '繁體中文': 'zh-TW', '簡體中文': 'zh-CN',
-          '日本語': 'ja', '한국어': 'ko', 'Français': 'fr', 'Deutsch': 'de', 'Kids': 'en'
+          '日本語': 'ja', '한국어': 'ko', 'Français': 'fr', 'Deutsch': 'de'
         };
         this.selectedLang = langMap[item.textContent.trim()] || 'en';
         console.log('[IFE] Language selected:', this.selectedLang, 'from text:', item.textContent.trim());
@@ -127,14 +136,21 @@ class IFEApplication {
   // ── Destination Name by Language ────────────────────────
   getDestName(flight) {
     const lang = this.selectedLang;
-    console.log('[IFE] getDestName: lang=', lang, 'destName=', flight.destinationName, 'destNameCn=', flight.destinationNameCn, 'destNameCnS=', flight.destinationNameCnS);
-    if (lang === 'zh-TW') {
+    if (lang === 'zh-TW' || lang === 'ja' || lang === 'ko') {
+      // 日韩用汉字（与繁中通用）
       return flight.destinationNameCn || flight.destinationName || flight.destination;
     }
     if (lang === 'zh-CN') {
       return flight.destinationNameCnS || flight.destinationNameCn || flight.destinationName || flight.destination;
     }
     return flight.destinationName || flight.destination;
+  }
+
+  // 出发地（香港）的本地化名称
+  getOriginName() {
+    const lang = this.selectedLang;
+    if (lang === 'en' || lang === 'fr' || lang === 'de') return 'Hong Kong';
+    return '香港';
   }
 
   // ── Tap Handlers ───────────────────────────────────────────
@@ -359,7 +375,8 @@ class IFEApplication {
       const dest = {
         lat:  flight.destCoords.lat,
         lng:  flight.destCoords.lng,
-        name: flight.destinationName
+        name: this.getDestName(flight),
+        originName: this.getOriginName()
       };
 
       window.GlobeScene.startFlight(dest, () => {
