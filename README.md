@@ -4,6 +4,8 @@ A replica of the Cathay Pacific in-flight entertainment (IFE) boot screen, runni
 
 Pure HTML5 + CSS3 + Vanilla JS — **no build tools, no package manager**. Open `index.html` directly in a browser or serve locally with `python3 -m http.server`.
 
+> **[中文版本](README.zh.md)**
+
 ---
 
 ## Features
@@ -12,10 +14,12 @@ Pure HTML5 + CSS3 + Vanilla JS — **no build tools, no package manager**. Open 
 - Split-flap departure board animation for flight info
 - 3D globe (Three.js + globe.gl) with programmatic low-poly airplane following great-circle routes
 - Day/night shader mixing day and night textures, sun fixed at Hong Kong noon, summer solstice
-- 31 real Cathay Pacific destinations with weighted probability (mainland China routes deprioritized)
+- 31 real Cathay Pacific destinations
 - Camera tracks airplane during flight, zooms in on arrival
 
 ---
+
+> **[中文版本](README.zh.md)**
 
 ## Hardware Target
 
@@ -167,7 +171,3 @@ Language selected on the start screen determines displayed destination names:
 - [globe.gl day-night-cycle example](https://globe.gl/example/day-night-cycle/)
 - [Three.js](https://threejs.org/)
 - [panel-mipi-dbi driver source](https://github.com/torvalds/linux/blob/master/drivers/gpu/drm/tiny/panel-mipi-dbi.c)
-
----
-
-> **中文说明**：国泰航空机上娱乐系统（IFE）开机引导屏的复刻版，纯前端 HTML5 + CSS3 + Vanilla JS，跑在 RDK X5 + 3.5" ST7796S SPI 屏上。4 状态机（启动屏 → 地球 → 揭示目的地 → 抵达），带 3D 地球、昼夜效果、低多边形飞机动画、31 条真实航点。零构建工具，配好 HTTP 服务就能看。
