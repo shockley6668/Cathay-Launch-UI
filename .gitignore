@@ -1,8 +1,9 @@
 # Videos
 *.mp4
 
-# Extracted frames directory
+# Reference frames directory
 frames/
+archive/frames/
 
 # Node modules & dependencies
 node_modules/
