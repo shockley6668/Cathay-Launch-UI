@@ -64,6 +64,8 @@ After syncing, restart the kiosk:
 sshpass -p 'sunrise' ssh sunrise@192.168.128.10 "sudo systemctl restart cathay-kiosk"
 ```
 
+> **First time setup?** The SPI LCD display driver, touch calibration, and system services need to be installed once before deploying the app. See the **[SPI LCD Setup Guide](SPI-LCD-SETUP.md)** for wiring, kernel modules, device tree overlays, and X11 configuration.
+
 ---
 
 ## Architecture

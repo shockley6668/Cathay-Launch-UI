@@ -62,6 +62,8 @@ sshpass -p 'sunrise' rsync -az \
 sshpass -p 'sunrise' ssh sunrise@192.168.128.10 "sudo systemctl restart cathay-kiosk"
 ```
 
+> **首次部署？** SPI 屏幕驱动、触摸校准和系统服务需要先安装一次。接线、内核模块、设备树 overlay 和 X11 配置详见 **[SPI LCD 设置指南](SPI-LCD-SETUP.zh.md)**。
+
 ---
 
 ## 架构速览
