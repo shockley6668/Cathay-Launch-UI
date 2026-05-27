@@ -141,21 +141,6 @@ archive/                    旧用户态 SPI/touch 驱动、调试脚本
   README.md                 每个文件是干嘛用的、为什么不再用
 ```
 
----
-
-## 多语言
-
-启动屏选什么语言决定后续显示：
-
-| 选择 | 目的地名称字段 | 出发地 |
-|---|---|---|
-| English | `destinationName` | "Hong Kong" |
-| 繁體中文 | `destinationNameCn` | "香港" |
-| 简体中文 | `destinationNameCnS` | "香港" |
-| 日本語 / 한국어 | `destinationNameCn`（汉字与繁中通用） | "香港" |
-| Français / Deutsch | `destinationName`（英文回退） | "Hong Kong" |
-
----
 
 ## 参考
 

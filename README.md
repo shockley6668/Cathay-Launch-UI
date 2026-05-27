@@ -21,8 +21,6 @@ Pure HTML5 + CSS3 + Vanilla JS — **no build tools, no package manager**. Open 
 
 ---
 
-> **[中文版本](README.zh.md)**
-
 ## Hardware Target
 
 | Item | Value |
@@ -152,21 +150,6 @@ archive/                    Old userspace SPI/touch drivers, test scripts
   README.md                 Archive contents and replacement references
 ```
 
----
-
-## Multi-language
-
-Language selected on the start screen determines displayed destination names:
-
-| Selection | Destination field | Origin (Hong Kong) |
-|---|---|---|
-| English | `destinationName` | "Hong Kong" |
-| 繁體中文 | `destinationNameCn` | "香港" |
-| 简体中文 | `destinationNameCnS` | "香港" |
-| 日本語 / 한국어 | `destinationNameCn` (shared CJK) | "香港" |
-| Français / Deutsch | `destinationName` (English fallback) | "Hong Kong" |
-
----
 
 ## References
 
